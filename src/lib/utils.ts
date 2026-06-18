@@ -67,10 +67,11 @@ export function getShareUrls(
 ) {
   const encodedUrl = encodeURIComponent(url);
   const encodedTitle = encodeURIComponent(title);
+  const whatsappText = encodeURIComponent(`${title} ${url}`);
 
   return {
     facebook: `https://www.facebook.com/sharer/sharer.php?u=${encodedUrl}`,
-    whatsapp: `https://wa.me/${SITE_CONFIG.whatsapp}?text=${encodedTitle}%20${encodedUrl}`,
+    whatsapp: `https://wa.me/?text=${whatsappText}`,
     twitter: `https://twitter.com/intent/tweet?text=${encodedTitle}&url=${encodedUrl}`,
     telegram: `https://t.me/share/url?url=${encodedUrl}&text=${encodedTitle}`,
     instagram: url,
