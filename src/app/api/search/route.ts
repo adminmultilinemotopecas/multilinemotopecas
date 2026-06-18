@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { searchProducts } from "@/lib/queries/products";
-import { createClient } from "@/lib/supabase/server";
+import { insertSearchLog } from "@/lib/db/analytics";
 
 export async function GET(request: NextRequest) {
   const { searchParams } = request.nextUrl;
@@ -14,11 +14,10 @@ export async function GET(request: NextRequest) {
 
   const results = await searchProducts(query, limit, offset);
 
-  const supabase = await createClient();
-  await supabase.from("search_logs").insert({
+  await insertSearchLog({
     query: query.trim().toLowerCase(),
-    results_count: results.length,
-    user_agent: request.headers.get("user-agent"),
+    resultsCount: results.length,
+    userAgent: request.headers.get("user-agent"),
   });
 
   return NextResponse.json(

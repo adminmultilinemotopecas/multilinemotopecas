@@ -6,7 +6,7 @@ import { Plus, Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { DataTable } from "@/components/admin/data-table";
-import { createClient } from "@/lib/supabase/client";
+import { adminFetch } from "@/lib/admin/client";
 import { formatPrice } from "@/lib/utils";
 import type { Product } from "@/types/database";
 
@@ -19,19 +19,17 @@ export default function AdminProductsPage() {
   }, []);
 
   async function loadProducts() {
-    const supabase = createClient();
-    const { data } = await supabase
-      .from("products")
-      .select("*, brand:brands(name), category:categories!category_id(name)")
-      .order("created_at", { ascending: false });
-    setProducts((data as Product[]) || []);
-    setLoading(false);
+    try {
+      const data = await adminFetch<Product[]>("/api/admin/products");
+      setProducts(data);
+    } finally {
+      setLoading(false);
+    }
   }
 
   async function handleDelete(product: Product) {
     if (!confirm(`Excluir "${product.name}"?`)) return;
-    const supabase = createClient();
-    await supabase.from("products").delete().eq("id", product.id);
+    await adminFetch(`/api/admin/products/${product.id}`, { method: "DELETE" });
     loadProducts();
   }
 
@@ -74,9 +72,7 @@ export default function AdminProductsPage() {
             key: "promotional_price",
             label: "Preço Promocional",
             render: (p) =>
-              p.promotional_price != null
-                ? formatPrice(p.promotional_price)
-                : "-",
+              p.promotional_price != null ? formatPrice(p.promotional_price) : "-",
           },
           {
             key: "status",
@@ -104,7 +100,9 @@ export default function AdminProductsPage() {
             ),
           },
         ]}
-        onEdit={(p) => window.location.href = `/admin/produtos/${p.id}`}
+        onEdit={(p) => {
+          window.location.href = `/admin/produtos/${p.id}`;
+        }}
         onDelete={handleDelete}
       />
     </div>

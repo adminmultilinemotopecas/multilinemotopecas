@@ -1,6 +1,8 @@
-import type { SupabaseClient } from "@supabase/supabase-js";
+import { createClient } from "@/lib/supabase/server";
+import { prisma } from "@/lib/prisma";
 
-export async function requireAdmin(supabase: SupabaseClient) {
+export async function requireAdmin() {
+  const supabase = await createClient();
   const {
     data: { user },
     error: authError,
@@ -10,19 +12,18 @@ export async function requireAdmin(supabase: SupabaseClient) {
     return { user: null, error: "Não autenticado" as const };
   }
 
-  const { data: adminProfile, error: profileError } = await supabase
-    .from("admin_profiles")
-    .select("id")
-    .eq("id", user.id)
-    .maybeSingle();
+  try {
+    const adminProfile = await prisma.admin_profiles.findUnique({
+      where: { id: user.id },
+      select: { id: true },
+    });
 
-  if (profileError) {
+    if (!adminProfile) {
+      return { user: null, error: "Sem permissão de administrador" as const };
+    }
+
+    return { user, error: null };
+  } catch {
     return { user: null, error: "Erro ao verificar permissões" as const };
   }
-
-  if (!adminProfile) {
-    return { user: null, error: "Sem permissão de administrador" as const };
-  }
-
-  return { user, error: null };
 }

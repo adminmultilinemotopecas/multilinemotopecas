@@ -5,7 +5,7 @@ export default function NewBrandPage() {
     <div>
       <h1 className="text-3xl font-bold mb-8">Nova Marca</h1>
       <CrudForm
-        table="brands"
+        apiEndpoint="/api/admin/brands"
         redirectTo="/admin/marcas"
         fields={[
           { name: "name", label: "Nome", required: true },

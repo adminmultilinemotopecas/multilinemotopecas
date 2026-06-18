@@ -11,6 +11,7 @@ import {
   LogOut,
   BarChart3,
   Store,
+  HelpCircle,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { createClient } from "@/lib/supabase/client";
@@ -24,6 +25,7 @@ const NAV_ITEMS = [
   { href: "/admin/marcas", label: "Marcas", icon: Tag },
   { href: "/admin/categorias", label: "Categorias", icon: FolderTree },
   { href: "/admin/modelos", label: "Modelos de Motos", icon: Bike },
+  { href: "/admin/faqs", label: "FAQs", icon: HelpCircle },
   { href: "/admin/analytics", label: "Analytics", icon: BarChart3 },
 ];
 

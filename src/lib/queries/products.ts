@@ -1,21 +1,29 @@
-import { createClient } from "@/lib/supabase/server";
+import { Prisma } from "@prisma/client";
+import { prisma } from "@/lib/prisma";
+import { decimalToNumber, mapProduct, productInclude } from "@/lib/db/mappers";
 import type {
+  MotorcycleModel,
   Product,
   ProductFilters,
   ProductSort,
   SearchResult,
-  MotorcycleModel,
 } from "@/types/database";
 import { PRODUCTS_PER_PAGE } from "@/lib/constants";
 
-const PRODUCT_SELECT = `
-  *,
-  brand:brands(*),
-  category:categories!category_id(*),
-  subcategory:categories!subcategory_id(*),
-  images:product_images(*),
-  reviews:product_reviews(*)
-`;
+function buildProductOrderBy(sort: ProductSort): Prisma.productsOrderByWithRelationInput {
+  switch (sort) {
+    case "price_asc":
+      return { price: "asc" };
+    case "price_desc":
+      return { price: "desc" };
+    case "bestseller":
+      return { purchase_click_count: "desc" };
+    case "name_asc":
+      return { name: "asc" };
+    default:
+      return { created_at: "desc" };
+  }
+}
 
 export async function getProducts(options: {
   filters?: ProductFilters;
@@ -24,129 +32,102 @@ export async function getProducts(options: {
   limit?: number;
   featured?: string;
 }) {
-  const supabase = await createClient();
   const { filters = {}, sort = "newest", page = 1, limit = PRODUCTS_PER_PAGE, featured } = options;
   const offset = (page - 1) * limit;
 
-  let query = supabase
-    .from("products")
-    .select(PRODUCT_SELECT, { count: "exact" })
-    .eq("status", "active");
+  const where: Prisma.productsWhereInput = {
+    status: "active",
+  };
 
-  if (featured === "featured") query = query.eq("is_featured", true);
-  if (featured === "bestseller") query = query.eq("is_bestseller", true);
-  if (featured === "new") query = query.eq("is_new", true);
-  if (featured === "promotion") query = query.eq("is_promotion", true);
-  if (featured === "launch") query = query.eq("is_launch", true);
-  if (featured === "recommended") query = query.eq("is_recommended", true);
+  if (featured === "featured") where.is_featured = true;
+  if (featured === "bestseller") where.is_bestseller = true;
+  if (featured === "new") where.is_new = true;
+  if (featured === "promotion") where.is_promotion = true;
+  if (featured === "launch") where.is_launch = true;
+  if (featured === "recommended") where.is_recommended = true;
 
-  if (filters.brand_id) query = query.eq("brand_id", filters.brand_id);
-  if (filters.category_id) query = query.eq("category_id", filters.category_id);
-  if (filters.subcategory_id) query = query.eq("subcategory_id", filters.subcategory_id);
-  if (filters.min_price) query = query.gte("price", filters.min_price);
-  if (filters.max_price) query = query.lte("price", filters.max_price);
-  if (filters.is_promotion) query = query.eq("is_promotion", true);
-  if (filters.in_stock) query = query.gt("stock", 0);
+  if (filters.brand_id) where.brand_id = filters.brand_id;
+  if (filters.category_id) where.category_id = filters.category_id;
+  if (filters.subcategory_id) where.subcategory_id = filters.subcategory_id;
+  if (filters.min_price != null || filters.max_price != null) {
+    where.price = {
+      ...(filters.min_price != null ? { gte: filters.min_price } : {}),
+      ...(filters.max_price != null ? { lte: filters.max_price } : {}),
+    };
+  }
+  if (filters.is_promotion) where.is_promotion = true;
+  if (filters.in_stock) where.stock = { gt: 0 };
 
   if (filters.motorcycle_model_id) {
-    const { data: compatIds } = await supabase
-      .from("product_motorcycle_compatibility")
-      .select("product_id")
-      .eq("motorcycle_model_id", filters.motorcycle_model_id);
+    const compatIds = await prisma.product_motorcycle_compatibility.findMany({
+      where: { motorcycle_model_id: filters.motorcycle_model_id },
+      select: { product_id: true },
+    });
 
-    if (compatIds?.length) {
-      query = query.in(
-        "id",
-        compatIds.map((c) => c.product_id)
-      );
-    } else {
+    if (compatIds.length === 0) {
       return { products: [], total: 0, totalPages: 0 };
     }
+
+    where.id = { in: compatIds.map((entry) => entry.product_id) };
   }
 
-  switch (sort) {
-    case "price_asc":
-      query = query.order("price", { ascending: true });
-      break;
-    case "price_desc":
-      query = query.order("price", { ascending: false });
-      break;
-    case "bestseller":
-      query = query.order("purchase_click_count", { ascending: false });
-      break;
-    case "name_asc":
-      query = query.order("name", { ascending: true });
-      break;
-    default:
-      query = query.order("created_at", { ascending: false });
-  }
+  try {
+    const [records, total] = await Promise.all([
+      prisma.products.findMany({
+        where,
+        include: productInclude,
+        orderBy: buildProductOrderBy(sort),
+        skip: offset,
+        take: limit,
+      }),
+      prisma.products.count({ where }),
+    ]);
 
-  query = query.range(offset, offset + limit - 1);
-
-  const { data, count, error } = await query;
-
-  if (error) {
-    console.error("Error fetching products:", {
-      message: error.message,
-      code: error.code,
-      details: error.details,
-      hint: error.hint,
-    });
+    return {
+      products: records.map(mapProduct),
+      total,
+      totalPages: Math.ceil(total / limit),
+    };
+  } catch (error) {
+    console.error("Error fetching products:", error);
     return { products: [], total: 0, totalPages: 0 };
   }
-
-  const total = count || 0;
-  return {
-    products: (data as Product[]) || [],
-    total,
-    totalPages: Math.ceil(total / limit),
-  };
 }
 
 export async function getProductBySlug(slug: string): Promise<Product | null> {
-  const supabase = await createClient();
+  const record = await prisma.products.findFirst({
+    where: { slug, status: "active" },
+    include: {
+      ...productInclude,
+      product_motorcycle_compatibility: {
+        include: {
+          motorcycle_models: true,
+        },
+      },
+    },
+  });
 
-  const { data, error } = await supabase
-    .from("products")
-    .select(`
-      ${PRODUCT_SELECT},
-      motorcycle_models:product_motorcycle_compatibility(
-        year,
-        year_end,
-        motorcycle_model:motorcycle_models(*)
-      )
-    `)
-    .eq("slug", slug)
-    .eq("status", "active")
-    .single();
+  if (!record) return null;
 
-  if (error || !data) return null;
+  const product = mapProduct(record);
 
-  type CompatibilityEntry = {
-    year: number | null;
-    year_end: number | null;
-    motorcycle_model: MotorcycleModel | null;
-  };
-
-  const productRecord = data as unknown as Omit<Product, "motorcycle_models"> & {
-    motorcycle_models?: CompatibilityEntry[];
-  };
-
-  const motorcycleModels = productRecord.motorcycle_models
-    ?.map((entry) => {
-      if (!entry.motorcycle_model) return null;
+  const motorcycleModels = record.product_motorcycle_compatibility
+    .map((entry) => {
+      if (!entry.motorcycle_models) return null;
       return {
-        ...entry.motorcycle_model,
+        ...entry.motorcycle_models,
         compatibility_year: entry.year,
         compatibility_year_end: entry.year_end,
+        created_at: entry.motorcycle_models.created_at.toISOString(),
+        updated_at: entry.motorcycle_models.updated_at.toISOString(),
       };
     })
-    .filter(Boolean) as Product["motorcycle_models"];
+    .filter(Boolean) as MotorcycleModel[];
 
   return {
-    ...productRecord,
+    ...product,
     motorcycle_models: motorcycleModels,
-    reviews: productRecord.reviews?.filter((r) => r.is_approved),
+    reviews: product.reviews?.filter((review) => review.is_approved),
   };
 }
 
@@ -156,67 +137,91 @@ export async function getRelatedProducts(
   brandId: string | null,
   limit = 8
 ): Promise<Product[]> {
-  const supabase = await createClient();
-
-  let query = supabase
-    .from("products")
-    .select(PRODUCT_SELECT)
-    .eq("status", "active")
-    .neq("id", productId)
-    .limit(limit);
+  const where: Prisma.productsWhereInput = {
+    status: "active",
+    id: { not: productId },
+  };
 
   if (categoryId) {
-    query = query.eq("category_id", categoryId);
+    where.category_id = categoryId;
   } else if (brandId) {
-    query = query.eq("brand_id", brandId);
+    where.brand_id = brandId;
   }
 
-  const { data } = await query;
-  return (data as Product[]) || [];
+  const records = await prisma.products.findMany({
+    where,
+    include: productInclude,
+    take: limit,
+  });
+
+  return records.map(mapProduct);
 }
+
+type SearchProductsRow = {
+  id: string;
+  name: string;
+  slug: string;
+  sku: string;
+  price: Prisma.Decimal;
+  promotional_price: Prisma.Decimal | null;
+  short_description: string | null;
+  mercado_livre_url: string | null;
+  brand_name: string | null;
+  category_name: string | null;
+  primary_image_url: string | null;
+  relevance: number;
+};
 
 export async function searchProducts(
   query: string,
   limit = 20,
   offset = 0
 ): Promise<SearchResult[]> {
-  const supabase = await createClient();
+  try {
+    const rows = await prisma.$queryRaw<SearchProductsRow[]>`
+      SELECT *
+      FROM search_products(${query}::text, ${limit}::integer, ${offset}::integer)
+    `;
 
-  const { data, error } = await supabase.rpc("search_products", {
-    search_query: query,
-    result_limit: limit,
-    result_offset: offset,
-  });
-
-  if (error) {
+    return rows.map((row) => ({
+      id: row.id,
+      name: row.name,
+      slug: row.slug,
+      sku: row.sku,
+      price: decimalToNumber(row.price) ?? 0,
+      promotional_price: decimalToNumber(row.promotional_price),
+      short_description: row.short_description,
+      mercado_livre_url: row.mercado_livre_url,
+      brand_name: row.brand_name,
+      category_name: row.category_name,
+      primary_image_url: row.primary_image_url,
+      relevance: Number(row.relevance),
+    }));
+  } catch (error) {
     console.error("Search error:", error);
     return [];
   }
-
-  return (data as SearchResult[]) || [];
 }
 
 export async function incrementProductView(productId: string) {
-  const supabase = await createClient();
-  const { data: product } = await supabase
-    .from("products")
-    .select("view_count")
-    .eq("id", productId)
-    .single();
-
-  if (product) {
-    await supabase
-      .from("products")
-      .update({ view_count: (product.view_count || 0) + 1 })
-      .eq("id", productId);
+  try {
+    await prisma.products.update({
+      where: { id: productId },
+      data: { view_count: { increment: 1 } },
+    });
+  } catch (error) {
+    console.error("Error incrementing product view:", error);
   }
 }
 
 export async function getAllProductSlugs(): Promise<{ slug: string; updated_at: string }[]> {
-  const supabase = await createClient();
-  const { data } = await supabase
-    .from("products")
-    .select("slug, updated_at")
-    .eq("status", "active");
-  return data || [];
+  const records = await prisma.products.findMany({
+    where: { status: "active" },
+    select: { slug: true, updated_at: true },
+  });
+
+  return records.map((record) => ({
+    slug: record.slug,
+    updated_at: record.updated_at.toISOString(),
+  }));
 }

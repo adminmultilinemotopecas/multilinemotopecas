@@ -1,13 +1,16 @@
 import { ProductForm } from "@/components/admin/product-form";
 import { getBrands, getCategories, getMotorcycleModels } from "@/lib/queries/catalog";
-import { peekNextProductInternalCode } from "@/lib/queries/admin";
+import { requireAdmin } from "@/lib/admin-auth";
+import { peekNextProductInternalCodeForAdmin } from "@/lib/queries/admin";
 
 export default async function NewProductPage() {
+  const { user } = await requireAdmin();
+
   const [brands, categories, motorcycleModels, suggestedInternalCode] = await Promise.all([
     getBrands(),
     getCategories(),
     getMotorcycleModels(),
-    peekNextProductInternalCode(),
+    user ? peekNextProductInternalCodeForAdmin(user.id) : Promise.resolve(null),
   ]);
 
   return (

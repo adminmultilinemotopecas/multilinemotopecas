@@ -1,22 +1,21 @@
 import { notFound } from "next/navigation";
 import { MotorcycleModelForm } from "@/components/admin/motorcycle-model-form";
-import { createClient } from "@/lib/supabase/server";
-import type { MotorcycleModel } from "@/types/database";
+import { prisma } from "@/lib/prisma";
+import { mapMotorcycleModel } from "@/lib/db/mappers";
 
 interface PageProps {
   params: Promise<{ id: string }>;
 }
 
-export default async function EditModelPage({ params }: PageProps) {
+export default async function EditMotorcycleModelPage({ params }: PageProps) {
   const { id } = await params;
-  const supabase = await createClient();
-  const { data } = await supabase.from("motorcycle_models").select("*").eq("id", id).single();
-  if (!data) notFound();
+  const record = await prisma.motorcycle_models.findUnique({ where: { id } });
+  if (!record) notFound();
 
   return (
     <div>
       <h1 className="text-3xl font-bold mb-8">Editar Modelo</h1>
-      <MotorcycleModelForm model={data as MotorcycleModel} />
+      <MotorcycleModelForm model={mapMotorcycleModel(record)} />
     </div>
   );
 }

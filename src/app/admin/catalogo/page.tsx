@@ -14,7 +14,7 @@ import {
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { createClient } from "@/lib/supabase/client";
+import { adminFetch } from "@/lib/admin/client";
 import { formatPrice } from "@/lib/utils";
 import {
   getVerificationBadgeVariant,
@@ -22,26 +22,27 @@ import {
   type MlVerificationResult,
   type MlVerificationStatus,
 } from "@/lib/mercado-livre-verify";
-import type { ProductStatus, ListingStatus } from "@/types/database";
+import type { Product } from "@/types/database";
 
-type CatalogProduct = {
-  id: string;
-  name: string;
-  slug: string;
-  sku: string;
-  internal_code: string | null;
-  price: number;
-  promotional_price: number | null;
-  status: ProductStatus;
-  listing_status: ListingStatus;
-  mercado_livre_url: string | null;
-  mercado_livre_id: string | null;
-  ml_verification_pending: boolean;
-  ml_verification_message: string | null;
-  ml_verified_at: string | null;
-  brand?: { name: string } | null;
-  category?: { name: string } | null;
-};
+type CatalogProduct = Pick<
+  Product,
+  | "id"
+  | "name"
+  | "slug"
+  | "sku"
+  | "internal_code"
+  | "price"
+  | "promotional_price"
+  | "status"
+  | "listing_status"
+  | "mercado_livre_url"
+  | "mercado_livre_id"
+  | "ml_verification_pending"
+  | "ml_verification_message"
+  | "ml_verified_at"
+  | "brand"
+  | "category"
+>;
 
 type VerificationMap = Record<string, MlVerificationResult>;
 
@@ -85,15 +86,8 @@ export default function AdminCatalogPage() {
   >("all");
 
   const loadProducts = useCallback(async () => {
-    const supabase = createClient();
-    const { data } = await supabase
-      .from("products")
-      .select(
-        "id, name, slug, sku, internal_code, price, promotional_price, status, listing_status, mercado_livre_url, mercado_livre_id, ml_verification_pending, ml_verification_message, ml_verified_at, purchase_click_count, view_count, created_at, brand:brands(name), category:categories!category_id(name)"
-      )
-      .order("name", { ascending: true });
-
-    setProducts((data as unknown as CatalogProduct[]) || []);
+    const data = await adminFetch<CatalogProduct[]>("/api/admin/catalog");
+    setProducts(data);
     setLoading(false);
   }, []);
 

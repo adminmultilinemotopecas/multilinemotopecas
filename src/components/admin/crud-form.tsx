@@ -6,41 +6,42 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Card, CardContent } from "@/components/ui/card";
-import { createClient } from "@/lib/supabase/client";
-import { slugify } from "@/lib/utils";
+import { adminFetch, AdminApiError } from "@/lib/admin/client";
 import { Loader2, Save } from "lucide-react";
 
 interface Field {
   name: string;
   label: string;
-  type?: "text" | "textarea" | "number" | "url";
+  type?: "text" | "textarea" | "number" | "url" | "checkbox";
   required?: boolean;
 }
 
 interface CrudFormProps {
-  table: string;
+  apiEndpoint: string;
   fields: Field[];
   initialData?: Record<string, unknown>;
   id?: string;
-  slugField?: string;
   redirectTo: string;
 }
 
 export function CrudForm({
-  table,
+  apiEndpoint,
   fields,
   initialData = {},
   id,
-  slugField = "name",
   redirectTo,
 }: CrudFormProps) {
   const router = useRouter();
   const [loading, setLoading] = useState(false);
-  const [form, setForm] = useState<Record<string, string>>(
+  const [error, setError] = useState("");
+  const [form, setForm] = useState<Record<string, string | boolean>>(
     fields.reduce(
-      (acc, f) => ({
+      (acc, field) => ({
         ...acc,
-        [f.name]: String(initialData[f.name] ?? ""),
+        [field.name]:
+          field.type === "checkbox"
+            ? Boolean(initialData[field.name] ?? true)
+            : String(initialData[field.name] ?? ""),
       }),
       {}
     )
@@ -49,50 +50,86 @@ export function CrudForm({
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     setLoading(true);
+    setError("");
 
-    const supabase = createClient();
-    const data: Record<string, unknown> = { ...form };
+    const data: Record<string, unknown> = {};
 
-    if (!id && slugField && form[slugField]) {
-      data.slug = slugify(form[slugField]);
-    }
-
-    fields.forEach((f) => {
-      if (f.type === "number" && form[f.name]) {
-        data[f.name] = parseFloat(form[f.name]);
+    fields.forEach((field) => {
+      if (field.type === "checkbox") {
+        data[field.name] = Boolean(form[field.name]);
+        return;
       }
-      if (!form[f.name]) data[f.name] = null;
+
+      const value = String(form[field.name] ?? "").trim();
+
+      if (field.type === "number") {
+        data[field.name] = value ? parseFloat(value) : 0;
+        return;
+      }
+
+      data[field.name] = value || null;
     });
 
-    if (id) {
-      await supabase.from(table).update(data).eq("id", id);
-    } else {
-      await supabase.from(table).insert(data);
-    }
+    try {
+      if (id) {
+        await adminFetch(`${apiEndpoint}/${id}`, {
+          method: "PUT",
+          body: JSON.stringify(data),
+        });
+      } else {
+        await adminFetch(apiEndpoint, {
+          method: "POST",
+          body: JSON.stringify(data),
+        });
+      }
 
-    setLoading(false);
-    router.push(redirectTo);
-    router.refresh();
+      router.push(redirectTo);
+      router.refresh();
+    } catch (err) {
+      setError(err instanceof AdminApiError ? err.message : "Erro ao salvar");
+    } finally {
+      setLoading(false);
+    }
   }
 
   return (
     <Card>
       <CardContent className="pt-6">
         <form onSubmit={handleSubmit} className="space-y-4 max-w-lg">
+          {error && (
+            <div className="rounded-lg border border-destructive/50 bg-destructive/10 px-4 py-3 text-sm text-destructive">
+              {error}
+            </div>
+          )}
           {fields.map((field) => (
             <div key={field.name}>
-              <Label>{field.label}{field.required && " *"}</Label>
+              <Label>
+                {field.label}
+                {field.required && " *"}
+              </Label>
               {field.type === "textarea" ? (
                 <textarea
-                  value={form[field.name]}
+                  value={String(form[field.name] ?? "")}
                   onChange={(e) => setForm({ ...form, [field.name]: e.target.value })}
                   required={field.required}
                   className="mt-1 flex w-full rounded-md border border-input bg-background px-3 py-2 text-sm min-h-[100px]"
                 />
+              ) : field.type === "checkbox" ? (
+                <div className="mt-2 flex items-center gap-2">
+                  <input
+                    type="checkbox"
+                    checked={Boolean(form[field.name])}
+                    onChange={(e) =>
+                      setForm({ ...form, [field.name]: e.target.checked })
+                    }
+                    className="h-4 w-4 rounded border-input"
+                  />
+                  <span className="text-sm text-muted-foreground">Sim</span>
+                </div>
               ) : (
                 <Input
                   type={field.type || "text"}
-                  value={form[field.name]}
+                  value={String(form[field.name] ?? "")}
                   onChange={(e) => setForm({ ...form, [field.name]: e.target.value })}
                   required={field.required}
                   className="mt-1"
@@ -102,7 +139,11 @@ export function CrudForm({
           ))}
           <div className="flex gap-3 pt-4">
             <Button type="submit" disabled={loading}>
-              {loading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
+              {loading ? (
+                <Loader2 className="h-4 w-4 animate-spin" />
+              ) : (
+                <Save className="h-4 w-4" />
+              )}
               Salvar
             </Button>
             <Button type="button" variant="outline" onClick={() => router.back()}>

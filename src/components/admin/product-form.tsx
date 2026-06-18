@@ -13,8 +13,8 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { createClient } from "@/lib/supabase/client";
-import { cn, slugify } from "@/lib/utils";
+import { adminFetch, AdminApiError } from "@/lib/admin/client";
+import { cn } from "@/lib/utils";
 import {
   getDefaultCompatibilityYears,
   getModelYearRange,
@@ -57,15 +57,14 @@ interface ImageField {
   alt_text: string;
 }
 
-function formatSupabaseError(message: string, code?: string): string {
-  if (code === "23505") {
+function formatApiError(message: string): string {
+  if (message.includes("duplicado") || message.includes("duplicate")) {
     if (message.includes("slug")) return "Já existe um produto com este nome/slug.";
     if (message.includes("sku")) return "Já existe um produto com este SKU.";
-    if (message.includes("internal_code")) return "Código interno duplicado. Tente salvar novamente.";
+    if (message.includes("internal_code")) {
+      return "Código interno duplicado. Tente salvar novamente.";
+    }
     return "Registro duplicado. Verifique nome ou SKU.";
-  }
-  if (code === "42501" || message.toLowerCase().includes("row-level security")) {
-    return "Sem permissão para salvar. Verifique se seu usuário está em admin_profiles no Supabase.";
   }
   return message;
 }
@@ -145,14 +144,16 @@ export function ProductForm({
   useEffect(() => {
     if (!isNewProduct || suggestedInternalCode) return;
 
-    const supabase = createClient();
-    supabase.rpc("peek_next_product_internal_code").then(({ data }) => {
-      if (data) {
-        setForm((prev) =>
-          prev.internal_code ? prev : { ...prev, internal_code: data as string }
-        );
-      }
-    });
+    fetch("/api/admin/products/internal-code")
+      .then((res) => res.json())
+      .then((data: { code?: string }) => {
+        if (data.code) {
+          setForm((prev) =>
+            prev.internal_code ? prev : { ...prev, internal_code: data.code as string }
+          );
+        }
+      })
+      .catch(() => {});
   }, [isNewProduct, suggestedInternalCode]);
 
   function updateField(field: string, value: string | boolean) {
@@ -191,39 +192,6 @@ export function ProductForm({
     setLoading(true);
     setError("");
 
-    const supabase = createClient();
-
-    const {
-      data: { user },
-      error: authError,
-    } = await supabase.auth.getUser();
-
-    if (authError || !user) {
-      setError("Sessão expirada. Faça login novamente.");
-      setLoading(false);
-      return;
-    }
-
-    const { data: adminProfile, error: profileError } = await supabase
-      .from("admin_profiles")
-      .select("id")
-      .eq("id", user.id)
-      .maybeSingle();
-
-    if (profileError) {
-      setError(formatSupabaseError(profileError.message, profileError.code));
-      setLoading(false);
-      return;
-    }
-
-    if (!adminProfile) {
-      setError(
-        "Seu usuário não tem perfil de administrador. Cadastre-o na tabela admin_profiles no Supabase."
-      );
-      setLoading(false);
-      return;
-    }
-
     if (!form.name.trim()) {
       setError("Informe o nome do produto.");
       setLoading(false);
@@ -236,11 +204,8 @@ export function ProductForm({
       return;
     }
 
-    const slug = product?.slug || slugify(form.name);
-
-    const productData = {
+    const payload = {
       name: form.name.trim(),
-      slug,
       sku: form.sku.trim(),
       internal_code: isNewProduct ? null : form.internal_code.trim() || null,
       brand_id: form.brand_id || null,
@@ -270,112 +235,30 @@ export function ProductForm({
       is_promotion: form.is_promotion,
       is_launch: form.is_launch,
       is_recommended: form.is_recommended,
+      images: imageFields
+        .map((img) => ({
+          url: img.url.trim(),
+          alt_text: img.alt_text.trim() || form.name.trim(),
+        }))
+        .filter((img) => img.url.length > 0),
+      modelCompat,
     };
 
-    let productId = product?.id;
+    try {
+      const url = product ? `/api/admin/products/${product.id}` : "/api/admin/products";
+      await adminFetch(url, {
+        method: product ? "PUT" : "POST",
+        body: JSON.stringify(payload),
+      });
 
-    if (product) {
-      const { error: updateError } = await supabase
-        .from("products")
-        .update(productData)
-        .eq("id", product.id);
-
-      if (updateError) {
-        setError(formatSupabaseError(updateError.message, updateError.code));
-        setLoading(false);
-        return;
-      }
-    } else {
-      const { data, error: insertError } = await supabase
-        .from("products")
-        .insert(productData)
-        .select("id, internal_code")
-        .single();
-
-      if (insertError) {
-        setError(formatSupabaseError(insertError.message, insertError.code));
-        setLoading(false);
-        return;
-      }
-
-      if (!data?.id) {
-        setError("Produto não foi criado. Verifique permissões de administrador.");
-        setLoading(false);
-        return;
-      }
-
-      productId = data.id;
-    }
-
-    const validImages = imageFields
-      .map((img) => ({
-        url: img.url.trim(),
-        alt_text: img.alt_text.trim() || form.name.trim(),
-      }))
-      .filter((img) => img.url.length > 0);
-
-    const { error: deleteImagesError } = await supabase
-      .from("product_images")
-      .delete()
-      .eq("product_id", productId!);
-
-    if (deleteImagesError) {
-      setError(formatSupabaseError(deleteImagesError.message, deleteImagesError.code));
+      router.push("/admin/produtos");
+      router.refresh();
+    } catch (err) {
+      const message = err instanceof AdminApiError ? err.message : "Erro ao salvar produto";
+      setError(formatApiError(message));
+    } finally {
       setLoading(false);
-      return;
     }
-
-    if (validImages.length > 0) {
-      const { error: imagesError } = await supabase.from("product_images").insert(
-        validImages.map((img, index) => ({
-          product_id: productId,
-          url: img.url,
-          alt_text: img.alt_text,
-          sort_order: index,
-          is_primary: index === 0,
-        }))
-      );
-
-      if (imagesError) {
-        setError(formatSupabaseError(imagesError.message, imagesError.code));
-        setLoading(false);
-        return;
-      }
-    }
-
-    const { error: deleteCompatError } = await supabase
-      .from("product_motorcycle_compatibility")
-      .delete()
-      .eq("product_id", productId!);
-
-    if (deleteCompatError) {
-      setError(formatSupabaseError(deleteCompatError.message, deleteCompatError.code));
-      setLoading(false);
-      return;
-    }
-
-    if (modelCompat.length > 0) {
-      const { error: compatError } = await supabase
-        .from("product_motorcycle_compatibility")
-        .insert(
-          modelCompat.map((item) => ({
-            product_id: productId,
-            motorcycle_model_id: item.modelId,
-            year: item.year,
-            year_end: item.yearEnd,
-          }))
-        );
-
-      if (compatError) {
-        setError(formatSupabaseError(compatError.message, compatError.code));
-        setLoading(false);
-        return;
-      }
-    }
-
-    setLoading(false);
-    router.push("/admin/produtos");
-    router.refresh();
   }
 
   const subcategories = categories.flatMap((c) => c.children || []);

@@ -1,0 +1,48 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Importar ML</title>
+    <link rel="stylesheet" href="popup.css" />
+  </head>
+  <body>
+    <header class="header">
+      <img src="icons/icon-48.png" alt="Multiline Motopeças" class="logo" />
+      <div>
+        <h1>Importar Produto</h1>
+        <p>Multiline Motopeças</p>
+      </div>
+    </header>
+
+    <main>
+      <label for="affiliateUrl">Link de afiliado do Mercado Livre</label>
+      <input
+        id="affiliateUrl"
+        type="url"
+        placeholder="https://mercadolivre.com/sec/..."
+        autocomplete="off"
+      />
+
+      <section id="preview" class="preview hidden">
+        <h2>Prévia da página</h2>
+        <p id="previewName" class="preview-name"></p>
+        <div class="preview-meta">
+          <span id="previewPrice"></span>
+          <span id="previewImages"></span>
+        </div>
+        <p id="previewId" class="preview-id"></p>
+      </section>
+
+      <p id="status" class="status" aria-live="polite"></p>
+
+      <button id="importBtn" type="button">Importar para revisão</button>
+    </main>
+
+    <footer>
+      <small>O produto entra como <strong>pendente de revisão</strong> e não é publicado automaticamente.</small>
+    </footer>
+
+    <script src="popup.js"></script>
+  </body>
+</html>

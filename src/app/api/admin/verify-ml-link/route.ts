@@ -1,8 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
-import { createClient } from "@/lib/supabase/server";
 import { requireAdmin } from "@/lib/admin-auth";
 import { verifyMercadoLivreListing } from "@/lib/mercado-livre-verify";
-import { applyVerificationToProduct } from "@/lib/apply-ml-verification";
+import { applyVerificationToProductDb } from "@/lib/apply-ml-verification";
+import { prisma } from "@/lib/prisma";
 
 export const runtime = "nodejs";
 export const maxDuration = 30;
@@ -10,8 +10,7 @@ export const dynamic = "force-dynamic";
 
 export async function POST(request: NextRequest) {
   try {
-    const supabase = await createClient();
-    const { error: authError } = await requireAdmin(supabase);
+    const { error: authError } = await requireAdmin();
 
     if (authError) {
       const status = authError === "Não autenticado" ? 401 : 403;
@@ -28,13 +27,17 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    const { data: product, error: productError } = await supabase
-      .from("products")
-      .select("id, name, mercado_livre_url, mercado_livre_id")
-      .eq("id", productId)
-      .single();
+    const product = await prisma.products.findUnique({
+      where: { id: productId },
+      select: {
+        id: true,
+        name: true,
+        mercado_livre_url: true,
+        mercado_livre_id: true,
+      },
+    });
 
-    if (productError || !product) {
+    if (!product) {
       return NextResponse.json(
         { error: "Produto não encontrado" },
         { status: 404 }
@@ -51,11 +54,7 @@ export async function POST(request: NextRequest) {
     let productReactivated = false;
 
     try {
-      const applied = await applyVerificationToProduct(
-        supabase,
-        product.id,
-        result
-      );
+      const applied = await applyVerificationToProductDb(product.id, result);
       productDeactivated = applied.productDeactivated;
       productReactivated = applied.productReactivated;
     } catch {

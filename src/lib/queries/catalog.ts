@@ -1,110 +1,97 @@
-import { createClient } from "@/lib/supabase/server";
-import type { Brand, Category, MotorcycleModel, FAQ } from "@/types/database";
+import { prisma } from "@/lib/prisma";
+import { mapBrand, mapCategory, mapFAQ, mapMotorcycleModel } from "@/lib/db/mappers";
+import type { Brand, Category, FAQ, MotorcycleModel } from "@/types/database";
 
 export async function getBrands(limit?: number): Promise<Brand[]> {
-  const supabase = await createClient();
-  let query = supabase
-    .from("brands")
-    .select("*")
-    .eq("is_active", true)
-    .order("sort_order", { ascending: true });
+  const records = await prisma.brands.findMany({
+    where: { is_active: true },
+    orderBy: { sort_order: "asc" },
+    take: limit,
+  });
 
-  if (limit) query = query.limit(limit);
-
-  const { data } = await query;
-  return (data as Brand[]) || [];
+  return records.map(mapBrand);
 }
 
 export async function getBrandBySlug(slug: string): Promise<Brand | null> {
-  const supabase = await createClient();
-  const { data } = await supabase
-    .from("brands")
-    .select("*")
-    .eq("slug", slug)
-    .eq("is_active", true)
-    .single();
-  return data as Brand | null;
+  const record = await prisma.brands.findFirst({
+    where: { slug, is_active: true },
+  });
+
+  return record ? mapBrand(record) : null;
 }
 
 export async function getCategories(): Promise<Category[]> {
-  const supabase = await createClient();
-  const { data } = await supabase
-    .from("categories")
-    .select("*")
-    .eq("is_active", true)
-    .is("parent_id", null)
-    .order("sort_order", { ascending: true });
-
-  if (!data) return [];
-
-  const categories = data as Category[];
-  const { data: children } = await supabase
-    .from("categories")
-    .select("*")
-    .eq("is_active", true)
-    .not("parent_id", "is", null)
-    .order("sort_order", { ascending: true });
-
-  const childMap = new Map<string, Category[]>();
-  (children as Category[] || []).forEach((child) => {
-    if (child.parent_id) {
-      const existing = childMap.get(child.parent_id) || [];
-      existing.push(child);
-      childMap.set(child.parent_id, existing);
-    }
+  const records = await prisma.categories.findMany({
+    where: { is_active: true, parent_id: null },
+    orderBy: { sort_order: "asc" },
   });
 
-  return categories.map((cat) => ({
-    ...cat,
-    children: childMap.get(cat.id) || [],
+  const children = await prisma.categories.findMany({
+    where: { is_active: true, parent_id: { not: null } },
+    orderBy: { sort_order: "asc" },
+  });
+
+  const childMap = new Map<string, Category[]>();
+  children.forEach((child) => {
+    if (!child.parent_id) return;
+    const mapped = mapCategory(child);
+    const existing = childMap.get(child.parent_id) || [];
+    existing.push(mapped);
+    childMap.set(child.parent_id, existing);
+  });
+
+  return records.map((category) => ({
+    ...mapCategory(category),
+    children: childMap.get(category.id) || [],
   }));
 }
 
 export async function getCategoryBySlug(slug: string): Promise<Category | null> {
-  const supabase = await createClient();
-  const { data } = await supabase
-    .from("categories")
-    .select("*")
-    .eq("slug", slug)
-    .eq("is_active", true)
-    .single();
-  return data as Category | null;
+  const record = await prisma.categories.findFirst({
+    where: { slug, is_active: true },
+  });
+
+  return record ? mapCategory(record) : null;
 }
 
 export async function getMotorcycleModels(): Promise<MotorcycleModel[]> {
-  const supabase = await createClient();
-  const { data } = await supabase
-    .from("motorcycle_models")
-    .select("*")
-    .eq("is_active", true)
-    .order("motorcycle_brand", { ascending: true });
-  return (data as MotorcycleModel[]) || [];
+  const records = await prisma.motorcycle_models.findMany({
+    where: { is_active: true },
+    orderBy: { motorcycle_brand: "asc" },
+  });
+
+  return records.map(mapMotorcycleModel);
 }
 
 export async function getFAQs(): Promise<FAQ[]> {
-  const supabase = await createClient();
-  const { data } = await supabase
-    .from("faqs")
-    .select("*")
-    .eq("is_active", true)
-    .order("sort_order", { ascending: true });
-  return (data as FAQ[]) || [];
+  const records = await prisma.faqs.findMany({
+    where: { is_active: true },
+    orderBy: { sort_order: "asc" },
+  });
+
+  return records.map(mapFAQ);
 }
 
 export async function getAllCategorySlugs() {
-  const supabase = await createClient();
-  const { data } = await supabase
-    .from("categories")
-    .select("slug, updated_at")
-    .eq("is_active", true);
-  return data || [];
+  const records = await prisma.categories.findMany({
+    where: { is_active: true },
+    select: { slug: true, updated_at: true },
+  });
+
+  return records.map((record) => ({
+    slug: record.slug,
+    updated_at: record.updated_at.toISOString(),
+  }));
 }
 
 export async function getAllBrandSlugs() {
-  const supabase = await createClient();
-  const { data } = await supabase
-    .from("brands")
-    .select("slug, updated_at")
-    .eq("is_active", true);
-  return data || [];
+  const records = await prisma.brands.findMany({
+    where: { is_active: true },
+    select: { slug: true, updated_at: true },
+  });
+
+  return records.map((record) => ({
+    slug: record.slug,
+    updated_at: record.updated_at.toISOString(),
+  }));
 }

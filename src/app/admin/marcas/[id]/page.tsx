@@ -1,6 +1,7 @@
 import { notFound } from "next/navigation";
 import { CrudForm } from "@/components/admin/crud-form";
-import { createClient } from "@/lib/supabase/server";
+import { prisma } from "@/lib/prisma";
+import { mapBrand } from "@/lib/db/mappers";
 
 interface PageProps {
   params: Promise<{ id: string }>;
@@ -8,17 +9,22 @@ interface PageProps {
 
 export default async function EditBrandPage({ params }: PageProps) {
   const { id } = await params;
-  const supabase = await createClient();
-  const { data } = await supabase.from("brands").select("*").eq("id", id).single();
-  if (!data) notFound();
+  const record = await prisma.brands.findUnique({ where: { id } });
+  if (!record) notFound();
+
+  const brand = mapBrand(record);
 
   return (
     <div>
       <h1 className="text-3xl font-bold mb-8">Editar Marca</h1>
       <CrudForm
-        table="brands"
+        apiEndpoint="/api/admin/brands"
         id={id}
-        initialData={data}
+        initialData={{
+          name: brand.name,
+          description: brand.description ?? "",
+          logo_url: brand.logo_url ?? "",
+        }}
         redirectTo="/admin/marcas"
         fields={[
           { name: "name", label: "Nome", required: true },

@@ -1,22 +1,38 @@
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { createClient } from "@/lib/supabase/server";
+import { prisma } from "@/lib/prisma";
 import { MousePointerClick, Eye, Search, Share2 } from "lucide-react";
 
 export default async function AdminAnalyticsPage() {
-  const supabase = await createClient();
-
-  const [{ data: events }, { data: searches }, { data: topProducts }] = await Promise.all([
-    supabase.from("analytics_events").select("event_type").order("created_at", { ascending: false }).limit(1000),
-    supabase.from("search_logs").select("query, results_count").order("created_at", { ascending: false }).limit(500),
-    supabase.from("products").select("name, view_count, purchase_click_count").order("view_count", { ascending: false }).limit(10),
+  const [events, searches, topProducts] = await Promise.all([
+    prisma.analytics_events.findMany({
+      select: { event_type: true },
+      orderBy: { created_at: "desc" },
+      take: 1000,
+    }),
+    prisma.search_logs.findMany({
+      select: { query: true, results_count: true },
+      orderBy: { created_at: "desc" },
+      take: 500,
+    }),
+    prisma.products.findMany({
+      select: { name: true, view_count: true, purchase_click_count: true },
+      orderBy: { view_count: "desc" },
+      take: 10,
+    }),
   ]);
 
   const eventCounts: Record<string, number> = {};
-  events?.forEach((e) => { eventCounts[e.event_type] = (eventCounts[e.event_type] || 0) + 1; });
+  events.forEach((e) => {
+    eventCounts[e.event_type] = (eventCounts[e.event_type] || 0) + 1;
+  });
 
   const searchTermCounts = new Map<string, number>();
-  searches?.forEach((s) => { searchTermCounts.set(s.query, (searchTermCounts.get(s.query) || 0) + 1); });
-  const topSearchTerms = Array.from(searchTermCounts.entries()).sort((a, b) => b[1] - a[1]).slice(0, 15);
+  searches.forEach((s) => {
+    searchTermCounts.set(s.query, (searchTermCounts.get(s.query) || 0) + 1);
+  });
+  const topSearchTerms = Array.from(searchTermCounts.entries())
+    .sort((a, b) => b[1] - a[1])
+    .slice(0, 15);
 
   const statCards = [
     { title: "Cliques Mercado Livre", value: eventCounts.purchase_click || 0, icon: MousePointerClick },
@@ -34,21 +50,30 @@ export default async function AdminAnalyticsPage() {
           return (
             <Card key={stat.title}>
               <CardHeader className="flex flex-row items-center justify-between pb-2">
-                <CardTitle className="text-sm font-medium text-muted-foreground">{stat.title}</CardTitle>
+                <CardTitle className="text-sm font-medium text-muted-foreground">
+                  {stat.title}
+                </CardTitle>
                 <Icon className="h-4 w-4 text-muted-foreground" />
               </CardHeader>
-              <CardContent><p className="text-3xl font-bold">{stat.value}</p></CardContent>
+              <CardContent>
+                <p className="text-3xl font-bold">{stat.value}</p>
+              </CardContent>
             </Card>
           );
         })}
       </div>
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
         <Card>
-          <CardHeader><CardTitle>Produtos mais acessados</CardTitle></CardHeader>
+          <CardHeader>
+            <CardTitle>Produtos mais acessados</CardTitle>
+          </CardHeader>
           <CardContent>
             <ul className="space-y-2">
-              {topProducts?.map((p, i) => (
-                <li key={i} className="flex justify-between text-sm py-1 border-b last:border-0">
+              {topProducts.map((p, i) => (
+                <li
+                  key={i}
+                  className="flex justify-between text-sm py-1 border-b last:border-0"
+                >
                   <span className="truncate mr-4">{p.name}</span>
                   <span className="text-muted-foreground shrink-0">{p.view_count} views</span>
                 </li>
@@ -57,11 +82,16 @@ export default async function AdminAnalyticsPage() {
           </CardContent>
         </Card>
         <Card>
-          <CardHeader><CardTitle>Termos mais pesquisados</CardTitle></CardHeader>
+          <CardHeader>
+            <CardTitle>Termos mais pesquisados</CardTitle>
+          </CardHeader>
           <CardContent>
             <ul className="space-y-2">
               {topSearchTerms.map(([term, count]) => (
-                <li key={term} className="flex justify-between text-sm py-1 border-b last:border-0">
+                <li
+                  key={term}
+                  className="flex justify-between text-sm py-1 border-b last:border-0"
+                >
                   <span>{term}</span>
                   <span className="text-muted-foreground">{count}x</span>
                 </li>

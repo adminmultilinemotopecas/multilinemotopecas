@@ -1,47 +1,40 @@
 import { Package, Eye, MousePointerClick, Search } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { createClient } from "@/lib/supabase/server";
+import { prisma } from "@/lib/prisma";
 
 export default async function AdminDashboard() {
-  const supabase = await createClient();
-
-  const [
-    { count: productCount },
-    { count: brandCount },
-    { count: categoryCount },
-    { data: topSearches },
-    { data: recentEvents },
-  ] = await Promise.all([
-    supabase.from("products").select("*", { count: "exact", head: true }),
-    supabase.from("brands").select("*", { count: "exact", head: true }),
-    supabase.from("categories").select("*", { count: "exact", head: true }),
-    supabase
-      .from("search_logs")
-      .select("query")
-      .order("created_at", { ascending: false })
-      .limit(100),
-    supabase
-      .from("analytics_events")
-      .select("*")
-      .order("created_at", { ascending: false })
-      .limit(10),
-  ]);
+  const [productCount, brandCount, categoryCount, topSearches, recentEvents] =
+    await Promise.all([
+      prisma.products.count(),
+      prisma.brands.count(),
+      prisma.categories.count(),
+      prisma.search_logs.findMany({
+        select: { query: true },
+        orderBy: { created_at: "desc" },
+        take: 100,
+      }),
+      prisma.analytics_events.findMany({
+        orderBy: { created_at: "desc" },
+        take: 10,
+      }),
+    ]);
 
   const searchCounts = new Map<string, number>();
-  topSearches?.forEach((s) => {
+  topSearches.forEach((s) => {
     searchCounts.set(s.query, (searchCounts.get(s.query) || 0) + 1);
   });
   const topSearchTerms = Array.from(searchCounts.entries())
     .sort((a, b) => b[1] - a[1])
     .slice(0, 10);
 
-  const purchaseClicks =
-    recentEvents?.filter((e) => e.event_type === "purchase_click").length || 0;
+  const purchaseClicks = recentEvents.filter(
+    (e) => e.event_type === "purchase_click"
+  ).length;
 
   const stats = [
-    { title: "Produtos", value: productCount || 0, icon: Package },
-    { title: "Marcas", value: brandCount || 0, icon: Tag },
-    { title: "Categorias", value: categoryCount || 0, icon: Search },
+    { title: "Produtos", value: productCount, icon: Package },
+    { title: "Marcas", value: brandCount, icon: Tag },
+    { title: "Categorias", value: categoryCount, icon: Search },
     { title: "Cliques ML (recentes)", value: purchaseClicks, icon: MousePointerClick },
   ];
 
@@ -103,7 +96,7 @@ export default async function AdminDashboard() {
             </CardTitle>
           </CardHeader>
           <CardContent>
-            {recentEvents && recentEvents.length > 0 ? (
+            {recentEvents.length > 0 ? (
               <ul className="space-y-2">
                 {recentEvents.map((event) => (
                   <li
@@ -129,7 +122,18 @@ export default async function AdminDashboard() {
 
 function Tag(props: React.SVGProps<SVGSVGElement>) {
   return (
-    <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" {...props}>
+    <svg
+      xmlns="http://www.w3.org/2000/svg"
+      width="24"
+      height="24"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      {...props}
+    >
       <path d="M12 2H2v10l9.29 9.29c.94.94 2.48.94 3.42 0l6.58-6.58c.94-.94.94-2.48 0-3.42L12 2Z" />
       <path d="M7 7h.01" />
     </svg>
