@@ -5,6 +5,8 @@ import { CookieBanner } from "@/components/legal/cookie-banner";
 import { ConditionalAnalytics } from "@/components/analytics/conditional-analytics";
 import { getBrands, getCategories } from "@/lib/queries/catalog";
 
+export const dynamic = "force-dynamic";
+
 export default async function SiteLayout({
   children,
 }: {
