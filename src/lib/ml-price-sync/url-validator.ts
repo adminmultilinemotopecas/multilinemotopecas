@@ -6,6 +6,22 @@ const PRODUCT_PAGE_HOST_PATTERN =
 const BLOCKED_HOST_PATTERN =
   /^(localhost|127(?:\.\d+){3}|10(?:\.\d+){3}|192\.168(?:\.\d+){2}|172\.(?:1[6-9]|2\d|3[01])(?:\.\d+){2})$/i;
 
+const AFFILIATE_PATH_PATTERN = /\/sec\/|\/social\/|\/perfil\//i;
+
+export function isMercadoLivreAffiliateUrl(url: string): boolean {
+  try {
+    const parsed = new URL(url);
+    if (!isMercadoLivreUrl(url)) return false;
+    const target = `${parsed.hostname}${parsed.pathname}${parsed.href}`;
+    return (
+      AFFILIATE_PATH_PATTERN.test(target) ||
+      /meli\.la|me2\.do|merca\.do/i.test(parsed.hostname)
+    );
+  } catch {
+    return false;
+  }
+}
+
 export function isMercadoLivreProductPageUrl(url: string): boolean {
   try {
     const parsed = new URL(url);
@@ -28,18 +44,18 @@ export function resolveProductSyncUrl(input: {
   ml_source_url?: string | null;
   mercado_livre_url?: string | null;
 }): string | null {
-  const candidates = [input.ml_source_url, input.mercado_livre_url].filter(Boolean) as string[];
+  const candidates = [input.mercado_livre_url, input.ml_source_url].filter(Boolean) as string[];
 
   for (const raw of candidates) {
     const trimmed = raw.trim();
-    if (isMercadoLivreProductPageUrl(trimmed)) {
+    if (isMercadoLivreAffiliateUrl(trimmed) || isMercadoLivreUrl(trimmed)) {
       return normalizeSyncUrl(trimmed);
     }
   }
 
   for (const raw of candidates) {
     const trimmed = raw.trim();
-    if (isMercadoLivreUrl(trimmed)) {
+    if (isMercadoLivreProductPageUrl(trimmed)) {
       return normalizeSyncUrl(trimmed);
     }
   }
@@ -79,6 +95,10 @@ export function isRedirectAwayFromProductPage(
   finalUrl: string,
   html: string
 ): boolean {
+  if (isMercadoLivreAffiliateUrl(originalUrl)) {
+    return false;
+  }
+
   if (!isMercadoLivreProductPageUrl(finalUrl) && isMercadoLivreUrl(finalUrl)) {
     return true;
   }

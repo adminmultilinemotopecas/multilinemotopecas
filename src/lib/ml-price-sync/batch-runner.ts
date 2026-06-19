@@ -1,9 +1,9 @@
 import { prisma } from "@/lib/prisma";
+import { isServerFetchEnabled, syncAllMercadoLivrePrices } from "@/lib/ml-price-sync/html/sync-service";
 import {
   getSyncDelayMs,
   listSyncCandidates,
   sleep,
-  syncProductPrice,
 } from "@/lib/ml-price-sync/price-sync-service";
 import type { BatchSyncProgress } from "@/lib/ml-price-sync/types";
 
@@ -61,7 +61,7 @@ export async function startBatchPriceSync(
     lastError: null,
   };
 
-  void runBatchLoop(candidates.map((item) => ({ id: item.id, name: item.name })), triggerSource);
+  void runBatchLoop(triggerSource);
 
   return {
     started: true,
@@ -72,40 +72,23 @@ export async function startBatchPriceSync(
   };
 }
 
-async function runBatchLoop(
-  candidates: Array<{ id: string; name: string }>,
-  triggerSource: "manual" | "cron"
-) {
+async function runBatchLoop(triggerSource: "manual" | "cron") {
   try {
-    for (const candidate of candidates) {
-      progress.currentProductId = candidate.id;
-      progress.currentProductName = candidate.name;
-
-      try {
-        const result = await syncProductPrice({
-          productId: candidate.id,
-          triggerSource,
-        });
-
-        if (result.scrape.status === "skipped" || result.scrape.status === "no_url") {
-          progress.skipped += 1;
-        } else if (result.scrape.status === "success") {
-          progress.succeeded += 1;
-        } else if (result.scrape.status === "low_confidence") {
-          progress.skipped += 1;
-        } else {
-          progress.failed += 1;
-          progress.lastError = result.message;
-        }
-      } catch (error) {
-        progress.failed += 1;
-        progress.lastError =
-          error instanceof Error ? error.message : "Erro ao sincronizar produto";
-      }
-
-      progress.processed += 1;
-      await sleep(getSyncDelayMs());
-    }
+    await syncAllMercadoLivrePrices({
+      triggerSource,
+      onProgress: (batchProgress) => {
+        progress.total = batchProgress.total;
+        progress.processed = batchProgress.processed;
+        progress.succeeded = batchProgress.succeeded;
+        progress.failed = batchProgress.failed;
+        progress.skipped = batchProgress.skipped;
+        progress.currentProductId = batchProgress.currentProductId;
+        progress.currentProductName = batchProgress.currentProductName;
+      },
+    });
+  } catch (error) {
+    progress.lastError =
+      error instanceof Error ? error.message : "Erro ao sincronizar produtos";
   } finally {
     progress.running = false;
     progress.currentProductId = null;
@@ -213,5 +196,6 @@ export function getCronConfig() {
     time: process.env.PRICE_SYNC_TIME || "05:00",
     timeZone: process.env.PRICE_SYNC_TIMEZONE || "America/Sao_Paulo",
     delayMs: getSyncDelayMs(),
+    serverFetchEnabled: isServerFetchEnabled(),
   };
 }

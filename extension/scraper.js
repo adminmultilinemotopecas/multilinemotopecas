@@ -672,6 +672,139 @@
     return null;
   }
 
+  function isMercadoLivreSocialPage() {
+    const path = window.location.pathname.toLowerCase();
+    return (
+      /\/social\//i.test(path) ||
+      /\/perfil\//i.test(path) ||
+      Boolean(
+        document.querySelector(
+          '[class*="social-post"], [data-testid*="social"], .recommendation-card, [class*="SocialPost"]'
+        )
+      )
+    );
+  }
+
+  function findProductPageLinks() {
+    const links = new Set();
+
+    document.querySelectorAll("a[href]").forEach((anchor) => {
+      const href = anchor.href || "";
+      if (/\/MLB-?\d+/i.test(href) || /\/p\/MLB/i.test(href)) {
+        try {
+          links.add(new URL(href).href.split("#")[0]);
+        } catch {
+          links.add(href.split("#")[0].split("?")[0]);
+        }
+      }
+    });
+
+    return Array.from(links);
+  }
+
+  function extractMercadoLivreIdFromUrl(url) {
+    if (!url) return null;
+    const match = url.match(/MLB-?(\d+)/i);
+    if (!match?.[1]) return null;
+    return match[1].startsWith("MLB") ? match[1].toUpperCase() : `MLB${match[1]}`;
+  }
+
+  function scrapeMercadoLivreSocialProduct() {
+    const jsonLdProducts = readJsonLdProducts();
+    const cardRoot =
+      document.querySelector('[class*="social-post"]') ||
+      document.querySelector('[class*="SocialPost"]') ||
+      document.querySelector(".poly-card") ||
+      document.body;
+
+    let title = extractTitle(jsonLdProducts);
+    if (!title) {
+      const titleNode = cardRoot.querySelector(
+        'h2, h3, p[class*="title"], [class*="title"], [class*="name"]'
+      );
+      title = cleanText(titleNode?.textContent);
+    }
+
+    let prices = extractPrices(jsonLdProducts);
+    if (prices.price == null && prices.promotionalPrice == null) {
+      const priceNodes = cardRoot.querySelectorAll(".andes-money-amount");
+      for (const node of priceNodes) {
+        const value = extractMoneyAmount(node);
+        if (value != null) {
+          prices = { price: value, promotionalPrice: null };
+          break;
+        }
+      }
+    }
+
+    let images = extractImages(jsonLdProducts);
+    if (images.length === 0) {
+      const ogImage = readMetaContent('meta[property="og:image"]');
+      if (ogImage) {
+        images = dedupeImages([ogImage]);
+      } else {
+        const collected = [];
+        cardRoot.querySelectorAll('img[src*="mlstatic"]').forEach((img) => {
+          if (img.src) collected.push(img.src);
+        });
+        images = dedupeImages(collected);
+      }
+    }
+
+    const productLinks = findProductPageLinks();
+    const productPageUrl = productLinks[0] || null;
+    const mercadoLivreId =
+      extractMercadoLivreId() || extractMercadoLivreIdFromUrl(productPageUrl);
+
+    if (!title) {
+      throw new Error("Não foi possível ler o título na página de perfil social.");
+    }
+
+    const price = prices.price ?? prices.promotionalPrice ?? 0;
+
+    return {
+      name: title,
+      mercadoLivreId,
+      price,
+      promotionalPrice:
+        prices.promotionalPrice != null &&
+        prices.price != null &&
+        prices.promotionalPrice < prices.price
+          ? prices.promotionalPrice
+          : null,
+      shortDescription: extractSubtitle() || readMetaContent('meta[property="og:description"]'),
+      fullDescription: null,
+      technicalSpecs: [],
+      applications: null,
+      compatibilities: null,
+      productReferences: null,
+      tags: mercadoLivreId ? [mercadoLivreId] : [],
+      images,
+      stock: 0,
+      sellerName: null,
+      condition: null,
+      categoryPath: null,
+      sourcePageUrl: productPageUrl || window.location.href,
+      affiliateLandingUrl: window.location.href,
+      productPageUrl,
+      needsProductPage: Boolean(productPageUrl && images.length === 0),
+    };
+  }
+
+  function scrapeMercadoLivrePage() {
+    if (isMercadoLivreSocialPage()) {
+      return scrapeMercadoLivreSocialProduct();
+    }
+
+    const product = scrapeMercadoLivreProduct();
+    return {
+      ...product,
+      affiliateLandingUrl: null,
+      productPageUrl: product.sourcePageUrl,
+      needsProductPage: false,
+    };
+  }
+
   function scrapeMercadoLivreProduct() {
     if (!isMercadoLivreProductPage()) {
       throw new Error("Abra uma página de produto do Mercado Livre para importar.");
@@ -723,19 +856,47 @@
   }
 
   globalScope.scrapeMercadoLivreProduct = scrapeMercadoLivreProduct;
+  globalScope.scrapeMercadoLivrePage = scrapeMercadoLivrePage;
 
   if (typeof chrome !== "undefined" && chrome.runtime?.onMessage) {
     chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
+      if (message?.type === "SCRAPE_ML_PRODUCT") {
+        try {
+          const data = scrapeMercadoLivreProduct();
+          sendResponse({ ok: true, data });
+        } catch (error) {
+          sendResponse({
+            ok: false,
+            error: error instanceof Error ? error.message : "Falha ao analisar produto.",
+          });
+        }
+        return true;
+      }
+
+      if (message?.type === "SCRAPE_ML_PAGE") {
+        try {
+          const data = scrapeMercadoLivrePage();
+          sendResponse({ ok: true, data });
+        } catch (error) {
+          sendResponse({
+            ok: false,
+            error: error instanceof Error ? error.message : "Falha ao analisar página.",
+          });
+        }
+        return true;
+      }
+
       if (message?.type !== "SCRAPE_ML_PRICE") return;
 
       try {
-        const data = scrapeMercadoLivreProduct();
+        const data = scrapeMercadoLivrePage();
         sendResponse({
           ok: true,
           price: data.price,
           promotionalPrice: data.promotionalPrice,
           sourcePageUrl: data.sourcePageUrl,
           pageTitle: data.name,
+          mercadoLivreId: data.mercadoLivreId,
         });
       } catch (error) {
         sendResponse({

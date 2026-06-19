@@ -48,8 +48,21 @@ export function waitForMlExtensionBridge(timeoutMs = 15000): Promise<MultilineMl
       if (Date.now() - startedAt >= timeoutMs) {
         finish(null);
       }
-    }, 200);
+    }, 100);
   });
+}
+
+export async function ensureMlExtensionBridge(
+  timeoutMs = 15000
+): Promise<MultilineMlBridge | null> {
+  const bridge = await waitForMlExtensionBridge(timeoutMs);
+  if (bridge) return bridge;
+
+  if (typeof document !== "undefined" && !document.getElementById("multiline-ml-page-bridge-installed")) {
+    window.dispatchEvent(new CustomEvent("multiline-ml-bridge-reinject"));
+  }
+
+  return waitForMlExtensionBridge(3000);
 }
 
 export function subscribeMlExtensionBridge(

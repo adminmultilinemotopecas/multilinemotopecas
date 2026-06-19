@@ -8,17 +8,12 @@ const previewNameEl = document.getElementById("previewName");
 const previewPriceEl = document.getElementById("previewPrice");
 const previewImagesEl = document.getElementById("previewImages");
 const previewIdEl = document.getElementById("previewId");
-const importPanel = document.getElementById("importPanel");
-const syncPanel = document.getElementById("syncPanel");
-const syncCurrentBtn = document.getElementById("syncCurrentBtn");
-const syncAllBtn = document.getElementById("syncAllBtn");
-const syncStatusEl = document.getElementById("syncStatus");
-const syncProgressEl = document.getElementById("syncProgress");
-const footerNoteEl = document.getElementById("footerNote");
-const tabButtons = document.querySelectorAll(".tab");
+const previewImageEl = document.getElementById("previewImage");
+const pageHintEl = document.getElementById("pageHint");
 
 let scrapedData = null;
-let syncProgressInterval = null;
+let analyzeTimer = null;
+let analyzing = false;
 
 function formatPrice(value) {
   if (value == null || Number.isNaN(value)) return "Preço não identificado";
@@ -33,15 +28,10 @@ function setStatus(message, type = "") {
   statusEl.className = `status${type ? ` ${type}` : ""}`;
 }
 
-function setSyncStatus(message, type = "") {
-  syncStatusEl.textContent = message;
-  syncStatusEl.className = `status${type ? ` ${type}` : ""}`;
-}
-
 function isMercadoLivreUrl(url) {
   try {
     const parsed = new URL(url);
-    return /mercadolivre|mercadolibre|meli\.la|me2\.do|merca\.do/i.test(
+    return /mercadolivre|mercadolibre|meli\.la|mer\.li|merc\.li|me2\.do|merca\.do/i.test(
       parsed.hostname
     );
   } catch {
@@ -49,17 +39,23 @@ function isMercadoLivreUrl(url) {
   }
 }
 
-function isMercadoLivreProductTab(url) {
-  try {
-    const parsed = new URL(url);
-    return /mercadolivre|mercadolibre/i.test(parsed.hostname);
-  } catch {
-    return false;
-  }
+function clearPreview() {
+  previewEl.classList.add("hidden");
+  previewImageEl.classList.add("hidden");
+  previewImageEl.removeAttribute("src");
 }
 
 function renderPreview(data) {
   previewEl.classList.remove("hidden");
+  const imageUrl = data.images?.[0];
+  if (imageUrl) {
+    previewImageEl.src = imageUrl;
+    previewImageEl.alt = data.name || "Produto";
+    previewImageEl.classList.remove("hidden");
+  } else {
+    previewImageEl.removeAttribute("src");
+    previewImageEl.classList.add("hidden");
+  }
   previewNameEl.textContent = data.name;
 
   const displayPrice =
@@ -81,57 +77,88 @@ async function getApiBaseUrl() {
   return stored.apiBaseUrl || DEFAULT_API_BASE;
 }
 
-async function scrapeActiveTab(tabId) {
-  return MultilinePriceSync.scrapePriceFromTab(tabId).then((result) => {
-    if (!result?.ok) {
-      throw new Error(result?.error || "Falha ao analisar página.");
-    }
-
-    return {
-      name: result.pageTitle,
-      mercadoLivreId: result.mercadoLivreId,
-      price: result.price,
-      promotionalPrice: result.promotionalPrice,
-      sourcePageUrl: result.sourcePageUrl,
-      images: [],
-      shortDescription: null,
-      fullDescription: null,
-      technicalSpecs: null,
-      applications: null,
-      compatibilities: null,
-      productReferences: null,
-      tags: [],
-      stock: null,
-      sellerName: null,
-      condition: null,
-      categoryPath: null,
-    };
+function sendRuntimeMessage(message) {
+  return new Promise((resolve, reject) => {
+    chrome.runtime.sendMessage(message, (response) => {
+      if (chrome.runtime.lastError) {
+        reject(new Error(chrome.runtime.lastError.message));
+        return;
+      }
+      resolve(response);
+    });
   });
 }
 
-async function loadPagePreview() {
-  setStatus("Analisando página do Mercado Livre...");
+async function requestActiveTabScrape() {
+  const response = await sendRuntimeMessage({ type: "SCRAPE_ACTIVE_TAB" });
+  if (!response?.ok || !response.data) {
+    throw new Error(response?.error || "Falha ao analisar a aba atual.");
+  }
+  return response.data;
+}
+
+async function requestAffiliateScrape(affiliateUrl) {
+  const response = await sendRuntimeMessage({
+    type: "SCRAPE_AFFILIATE_URL",
+    affiliateUrl,
+  });
+  if (!response?.ok || !response.data) {
+    throw new Error(response?.error || "Falha ao analisar link de afiliado.");
+  }
+  return response.data;
+}
+
+async function applyScrapedData(data, affiliateUrl, statusMessage) {
+  scrapedData = data;
+  affiliateInput.value = affiliateUrl;
+  renderPreview(data);
+  setStatus(statusMessage);
+  importBtn.disabled = false;
+  if (pageHintEl) {
+    pageHintEl.textContent = "URL detectada automaticamente da aba aberta.";
+  }
+  await chrome.storage.sync.set({ lastAffiliateUrl: affiliateUrl });
+}
+
+async function analyzeAffiliateLink(options = {}) {
+  const { preferActiveTab = false } = options;
+  const manualUrl = affiliateInput.value.trim();
+
+  if (analyzing) return;
+  analyzing = true;
   importBtn.disabled = true;
   scrapedData = null;
-  previewEl.classList.add("hidden");
+  clearPreview();
+  setStatus("Analisando página do Mercado Livre...");
 
   try {
-    const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
-    if (!tab?.id || !tab.url) {
-      throw new Error("Não foi possível identificar a aba ativa.");
+    let data;
+
+    if (preferActiveTab) {
+      data = await requestActiveTabScrape();
+    } else if (manualUrl) {
+      if (!isMercadoLivreUrl(manualUrl)) {
+        throw new Error("O link precisa ser um URL do Mercado Livre.");
+      }
+      data = await requestAffiliateScrape(manualUrl);
+    } else {
+      throw new Error("Informe o link de afiliado do Mercado Livre.");
     }
 
-    if (!isMercadoLivreProductTab(tab.url)) {
-      throw new Error("Abra um anúncio do Mercado Livre antes de importar.");
-    }
-
-    scrapedData = await scrapeActiveTab(tab.id);
-    renderPreview(scrapedData);
-    setStatus("Página analisada. Informe o link de afiliado e importe.");
-    importBtn.disabled = false;
+    const affiliateUrl = data.affiliateUrl || manualUrl;
+    await applyScrapedData(
+      data,
+      affiliateUrl,
+      preferActiveTab
+        ? "Produto detectado automaticamente. Revise a prévia e importe."
+        : "Página analisada. Revise a prévia e importe."
+    );
   } catch (error) {
-    setStatus(error.message || "Falha ao analisar a página.", "error");
+    setStatus(error.message || "Falha ao analisar link.", "error");
     importBtn.disabled = true;
+    throw error;
+  } finally {
+    analyzing = false;
   }
 }
 
@@ -144,14 +171,8 @@ async function importProduct() {
     return;
   }
 
-  if (!isMercadoLivreUrl(affiliateUrl)) {
-    setStatus("O link de afiliado precisa ser um URL do Mercado Livre.", "error");
-    affiliateInput.focus();
-    return;
-  }
-
   if (!scrapedData) {
-    setStatus("A página ainda não foi analisada. Aguarde ou recarregue o popup.", "error");
+    setStatus("Aguarde a análise da página ou cole o link novamente.", "error");
     return;
   }
 
@@ -197,112 +218,55 @@ async function importProduct() {
       `Importado com sucesso (${payload.imagesCount} imagens). Status: pendente de revisão.`,
       "success"
     );
-    await chrome.storage.sync.set({ lastAffiliateUrl: affiliateUrl });
   } catch (error) {
     setStatus(error.message || "Erro ao importar produto.", "error");
     importBtn.disabled = false;
   }
 }
 
-async function restoreAffiliateUrl() {
-  const stored = await chrome.storage.sync.get(["lastAffiliateUrl"]);
-  if (stored.lastAffiliateUrl) {
-    affiliateInput.value = stored.lastAffiliateUrl;
-  }
-}
-
-function switchTab(tabName) {
-  tabButtons.forEach((button) => {
-    button.classList.toggle("active", button.dataset.tab === tabName);
-  });
-
-  importPanel.classList.toggle("hidden", tabName !== "import");
-  syncPanel.classList.toggle("hidden", tabName !== "sync");
-  footerNoteEl.innerHTML =
-    tabName === "sync"
-      ? "Sincronização usa cookies do <strong>Mercado Livre</strong> logado neste navegador."
-      : "Produtos importados entram como <strong>pendente de revisão</strong>.";
-}
-
-function startSyncProgressPolling() {
-  if (syncProgressInterval) {
-    window.clearInterval(syncProgressInterval);
+function scheduleAnalyze() {
+  if (analyzeTimer) {
+    clearTimeout(analyzeTimer);
   }
 
-  syncProgressInterval = window.setInterval(async () => {
-    const stored = await chrome.storage.session.get(["multilineSyncAllProgress"]);
-    const progress = stored.multilineSyncAllProgress;
-    if (!progress) return;
-
-    syncProgressEl.textContent = progress.currentProductName
-      ? `${progress.processed}/${progress.total} — ${progress.currentProductName}`
-      : `${progress.processed}/${progress.total} — Sucesso: ${progress.succeeded} · Falhas: ${progress.failed}`;
-  }, 800);
+  analyzeTimer = setTimeout(() => {
+    const value = affiliateInput.value.trim();
+    if (value && isMercadoLivreUrl(value)) {
+      void analyzeAffiliateLink();
+    }
+  }, 600);
 }
-
-function stopSyncProgressPolling() {
-  if (syncProgressInterval) {
-    window.clearInterval(syncProgressInterval);
-    syncProgressInterval = null;
-  }
-}
-
-async function handleSyncCurrent() {
-  syncCurrentBtn.disabled = true;
-  syncAllBtn.disabled = true;
-  setSyncStatus("Sincronizando anúncio atual...");
-  syncProgressEl.textContent = "";
-
-  try {
-    const payload = await MultilinePriceSync.syncCurrentTabProduct();
-    setSyncStatus(
-      `${payload.product.name}: ${payload.result.message || "Preço sincronizado."}`,
-      "success"
-    );
-  } catch (error) {
-    setSyncStatus(error.message || "Falha ao sincronizar anúncio.", "error");
-  } finally {
-    syncCurrentBtn.disabled = false;
-    syncAllBtn.disabled = false;
-  }
-}
-
-async function handleSyncAll() {
-  syncCurrentBtn.disabled = true;
-  syncAllBtn.disabled = true;
-  setSyncStatus("Sincronizando todos os produtos via navegador...");
-  syncProgressEl.textContent = "Iniciando...";
-  startSyncProgressPolling();
-
-  try {
-    const stats = await MultilinePriceSync.syncAllProducts((progress) => {
-      syncProgressEl.textContent = progress.currentProductName
-        ? `${progress.processed}/${progress.total} — ${progress.currentProductName}`
-        : `${progress.processed}/${progress.total}`;
-    });
-
-    setSyncStatus(
-      `Concluído: ${stats.succeeded} sucesso · ${stats.failed} falhas de ${stats.total}.`,
-      stats.failed > 0 ? "error" : "success"
-    );
-  } catch (error) {
-    setSyncStatus(error.message || "Falha ao sincronizar todos.", "error");
-  } finally {
-    stopSyncProgressPolling();
-    syncCurrentBtn.disabled = false;
-    syncAllBtn.disabled = false;
-  }
-}
-
-tabButtons.forEach((button) => {
-  button.addEventListener("click", () => switchTab(button.dataset.tab));
-});
 
 importBtn.addEventListener("click", importProduct);
-syncCurrentBtn.addEventListener("click", handleSyncCurrent);
-syncAllBtn.addEventListener("click", handleSyncAll);
+affiliateInput.addEventListener("input", scheduleAnalyze);
+affiliateInput.addEventListener("change", scheduleAnalyze);
+affiliateInput.addEventListener("paste", scheduleAnalyze);
 
 document.addEventListener("DOMContentLoaded", async () => {
-  await restoreAffiliateUrl();
-  await loadPagePreview();
+  setStatus("Detectando produto na aba aberta...");
+
+  try {
+    await analyzeAffiliateLink({ preferActiveTab: true });
+  } catch {
+    const stored = await chrome.storage.sync.get(["lastAffiliateUrl"]);
+    if (stored.lastAffiliateUrl) {
+      affiliateInput.value = stored.lastAffiliateUrl;
+      if (pageHintEl) {
+        pageHintEl.textContent = "Usando o último link salvo.";
+      }
+      try {
+        await analyzeAffiliateLink();
+      } catch {
+        setStatus(
+          "Abra uma página de produto do Mercado Livre e abra a extensão novamente.",
+          "error"
+        );
+      }
+    } else {
+      setStatus(
+        "Abra uma página de produto do Mercado Livre e abra a extensão novamente.",
+        "error"
+      );
+    }
+  }
 });

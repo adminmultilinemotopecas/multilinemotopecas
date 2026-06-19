@@ -8,7 +8,7 @@ const STATUS_LABELS: Record<PriceSyncStatus, string> = {
   success: "Sucesso",
   failed: "Falha",
   skipped: "Ignorado",
-  low_confidence: "Baixa confiança",
+  low_confidence: "Revisão manual",
   no_url: "Sem URL",
   blocked: "Bloqueado",
   unavailable: "Indisponível",
@@ -55,11 +55,16 @@ export function hasSyncUrl(
   >
 ): boolean {
   const urls = [product.mlSourceUrl, product.mercadoLivreUrl].filter(Boolean);
-  return urls.some(
-    (url) =>
-      /mercadolivre\.com\.br/i.test(url!) &&
-      (/\/MLB-?\d+/i.test(url!) || /\/p\/MLB/i.test(url!))
-  );
+  return urls.some((url) => {
+    if (/meli\.la|me2\.do|merca\.do/i.test(url!)) return true;
+    if (!/mercadolivre\.com/i.test(url!)) return false;
+    return (
+      /\/MLB-?\d+/i.test(url!) ||
+      /\/p\/MLB/i.test(url!) ||
+      /\/sec\//i.test(url!) ||
+      /\/social\//i.test(url!)
+    );
+  });
 }
 
 export function PriceSyncStatusDisplay({

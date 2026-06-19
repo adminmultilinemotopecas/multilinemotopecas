@@ -64,6 +64,13 @@ label {
   color: var(--muted);
 }
 
+.page-hint {
+  margin: -4px 0 0;
+  font-size: 11px;
+  color: #737373;
+  line-height: 1.4;
+}
+
 input {
   width: 100%;
   padding: 10px 12px;
@@ -155,52 +162,25 @@ button:disabled {
   cursor: not-allowed;
 }
 
+.preview-image {
+  width: 100%;
+  max-height: 140px;
+  object-fit: contain;
+  border-radius: 8px;
+  margin-bottom: 8px;
+  background: #111;
+}
+
+.preview-image.hidden {
+  display: none;
+}
+
 button.secondary {
   background: #262626;
-  margin-bottom: 8px;
 }
 
 button.secondary:hover:not(:disabled) {
   background: #333333;
-}
-
-.tabs {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 8px;
-  padding: 12px 16px 0;
-}
-
-.tab {
-  width: 100%;
-  padding: 10px 12px;
-  background: var(--card);
-  color: var(--muted);
-  font-size: 12px;
-  font-weight: 600;
-}
-
-.tab.active {
-  background: var(--primary);
-  color: white;
-}
-
-.panel.hidden {
-  display: none;
-}
-
-.sync-intro {
-  margin: 0;
-  font-size: 12px;
-  line-height: 1.45;
-  color: var(--muted);
-}
-
-.sync-progress {
-  min-height: 16px;
-  margin: 0;
-  font-size: 11px;
-  color: var(--muted);
 }
 
 footer {
@@ -216,4 +196,10 @@ footer small {
 
 footer strong {
   color: var(--text);
+}
+
+footer .version {
+  margin-top: 8px;
+  font-size: 10px;
+  color: #737373;
 }

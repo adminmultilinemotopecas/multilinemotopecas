@@ -3,34 +3,31 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Multiline Motopeças</title>
+    <title>Importar Produto</title>
     <link rel="stylesheet" href="popup.css" />
   </head>
   <body>
     <header class="header">
       <img src="icons/icon-48.png" alt="Multiline Motopeças" class="logo" />
       <div>
-        <h1>Multiline Motopeças</h1>
-        <p>Mercado Livre</p>
+        <h1>Importar Produto</h1>
+        <p>Multiline Motopeças</p>
       </div>
     </header>
 
-    <nav class="tabs">
-      <button type="button" class="tab active" data-tab="import">Importar</button>
-      <button type="button" class="tab" data-tab="sync">Sincronizar preços</button>
-    </nav>
-
-    <main id="importPanel" class="panel">
+    <main>
       <label for="affiliateUrl">Link de afiliado do Mercado Livre</label>
+      <p id="pageHint" class="page-hint">Detectando URL da aba aberta...</p>
       <input
         id="affiliateUrl"
         type="url"
-        placeholder="https://mercadolivre.com/sec/..."
+        placeholder="https://meli.la/... ou mer.li/..."
         autocomplete="off"
       />
 
       <section id="preview" class="preview hidden">
         <h2>Prévia da página</h2>
+        <img id="previewImage" class="preview-image hidden" alt="" />
         <p id="previewName" class="preview-name"></p>
         <div class="preview-meta">
           <span id="previewPrice"></span>
@@ -41,26 +38,17 @@
 
       <p id="status" class="status" aria-live="polite"></p>
 
-      <button id="importBtn" type="button">Importar para revisão</button>
-    </main>
-
-    <main id="syncPanel" class="panel hidden">
-      <p class="sync-intro">
-        Usa sua sessão logada do Mercado Livre no navegador. Mantenha o admin aberto e logado.
-      </p>
-
-      <button id="syncCurrentBtn" type="button" class="secondary">Sincronizar este anúncio</button>
-      <button id="syncAllBtn" type="button">Sincronizar todos os preços</button>
-
-      <p id="syncStatus" class="status" aria-live="polite"></p>
-      <p id="syncProgress" class="sync-progress"></p>
+      <button id="importBtn" type="button" disabled>Importar para revisão</button>
     </main>
 
     <footer>
-      <small id="footerNote">Produtos importados entram como <strong>pendente de revisão</strong>.</small>
+      <small
+        >O produto entra como <strong>pendente de revisão</strong> e não é publicado
+        automaticamente.</small
+      >
+      <small class="version">Extensão v2.1.1</small>
     </footer>
 
-    <script src="sync-prices.js"></script>
     <script src="popup.js"></script>
   </body>
 </html>

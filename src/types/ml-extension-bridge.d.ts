@@ -8,24 +8,27 @@ export interface MultilineMlBridge {
     tabId?: number;
     adminOrigin: string;
     sourceUrl: string;
-  }): Promise<{ ok: boolean; error?: string }>;
-  syncProductPrice(input: {
-    productId: string;
-    sourceUrl: string;
-    adminOrigin?: string;
   }): Promise<{
     ok: boolean;
-    result?: { message?: string; updated?: boolean; newPrice?: number | null };
-    scrape?: { price?: number; promotionalPrice?: number | null };
+    scrape?: {
+      price?: number;
+      promotionalPrice?: number | null;
+      sourcePageUrl?: string;
+      pageTitle?: string;
+    };
     error?: string;
   }>;
-  syncAllProductPrices(): Promise<{
+  scrapeAffiliateUrl(input: {
+    affiliateUrl: string;
+  }): Promise<{
     ok: boolean;
-    stats?: {
-      total: number;
-      processed: number;
-      succeeded: number;
-      failed: number;
+    data?: {
+      name: string;
+      price: number;
+      promotionalPrice: number | null;
+      mercadoLivreId: string | null;
+      images: string[];
+      sourcePageUrl: string;
     };
     error?: string;
   }>;
