@@ -18,6 +18,43 @@ const MAX_PRICE_CHANGE_PERCENT = 30;
 const BLOCKED_MESSAGE = "Mercado Livre bloqueou ou exigiu verificação.";
 const MANUAL_REVIEW_MESSAGE =
   "Preço varia mais de 30% do valor atual — revisão manual necessária.";
+const AFFILIATE_PRICE_SOURCES = new Set([
+  "social_profile",
+  "social_profile_fallback",
+  "social_profile_mlb",
+]);
+
+function formatCurrency(value: number): string {
+  return new Intl.NumberFormat("pt-BR", {
+    style: "currency",
+    currency: "BRL",
+  }).format(value);
+}
+
+function shouldTrustAffiliatePrice(extractionSource: string): boolean {
+  return AFFILIATE_PRICE_SOURCES.has(extractionSource);
+}
+
+function buildHtmlSyncMessage(input: {
+  status: MlHtmlSyncStatus;
+  baseMessage: string;
+  usedSocialFallback: boolean;
+  extractedPrice: number | null;
+}): string {
+  if (input.status === "success" && input.usedSocialFallback) {
+    return "Preço atualizado via link de afiliado (perfil social).";
+  }
+
+  if (input.status === "low_confidence" && input.extractedPrice != null) {
+    return `Preço lido ${formatCurrency(input.extractedPrice)}. ${input.baseMessage}`;
+  }
+
+  if (input.status === "blocked") {
+    return "Mercado Livre bloqueou a leitura. Use o link de afiliado meli.la salvo no produto.";
+  }
+
+  return input.baseMessage;
+}
 
 export function isServerFetchEnabled(): boolean {
   return process.env.PRICE_SYNC_SERVER_FETCH !== "false";
@@ -85,7 +122,10 @@ function evaluateExtractedPrice(input: {
   const effectiveCurrent = getEffectivePrice(input.oldPrice, input.oldPromotionalPrice);
   const effectiveNext = input.extractedPromotionalPrice ?? input.extractedPrice;
 
-  if (isPriceChangeTooLarge(effectiveCurrent, effectiveNext)) {
+  if (
+    !shouldTrustAffiliatePrice(input.extractionSource) &&
+    isPriceChangeTooLarge(effectiveCurrent, effectiveNext)
+  ) {
     return {
       status: "low_confidence",
       message: MANUAL_REVIEW_MESSAGE,
@@ -119,6 +159,7 @@ async function loadProductForSync(productId: string) {
       promotional_price: true,
       ml_source_url: true,
       mercado_livre_url: true,
+      mercado_livre_id: true,
       price_sync_enabled: true,
     },
   });
@@ -443,11 +484,13 @@ export async function syncMercadoLivrePrice(
     } else {
       const extracted = extractMercadoLivrePrice(fetched.html, {
         preferSocial: fetched.usedSocialFallback || !fetched.productPageUrl,
+        mercadoLivreId: product.mercado_livre_id,
       });
 
       if (extracted.price == null) {
         status = "failed";
-        message = "Preço não encontrado na página do Mercado Livre.";
+        message =
+          "Preço não encontrado. Confirme se o produto tem link meli.la de afiliado salvo.";
       } else {
         extractionSource = fetched.usedSocialFallback
           ? "social_profile_fallback"
@@ -460,9 +503,12 @@ export async function syncMercadoLivrePrice(
           extractionSource,
         });
         status = evaluated.status;
-        message = fetched.usedSocialFallback
-          ? "Preço sincronizado via perfil social (PDP bloqueada)."
-          : evaluated.message;
+        message = buildHtmlSyncMessage({
+          status: evaluated.status,
+          baseMessage: evaluated.message,
+          usedSocialFallback: Boolean(fetched.usedSocialFallback),
+          extractedPrice: extracted.price,
+        });
         updated = evaluated.updated;
         newPrice = evaluated.newPrice;
         newPromotionalPrice = evaluated.newPromotionalPrice;
@@ -470,8 +516,21 @@ export async function syncMercadoLivrePrice(
       }
     }
   } catch (error) {
-    status = "failed";
-    message = error instanceof Error ? error.message : "Falha ao buscar página do Mercado Livre.";
+    const errorMessage =
+      error instanceof Error ? error.message : "Falha ao buscar página do Mercado Livre.";
+
+    if (/bloqueou|verifica[cç][aã]o/i.test(errorMessage)) {
+      status = "blocked";
+      message = buildHtmlSyncMessage({
+        status: "blocked",
+        baseMessage: errorMessage,
+        usedSocialFallback: false,
+        extractedPrice: null,
+      });
+    } else {
+      status = "failed";
+      message = errorMessage;
+    }
   }
 
   await persistProductSyncState({
@@ -564,10 +623,13 @@ export async function syncAllMercadoLivrePrices(input?: {
         succeeded: batch.succeeded,
         failed: batch.failed,
         skipped: batch.skipped,
-        currentProductId: null,
-        currentProductName: null,
+        currentProductId: candidate.id,
+        currentProductName: candidate.name,
       });
-      break;
+      if (batch.processed < batch.total) {
+        await sleep(getSyncDelayWithJitter());
+      }
+      continue;
     }
 
     input?.onProgress?.({

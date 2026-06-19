@@ -143,6 +143,40 @@ export function extractPriceFromSocialPage(html: string): number | null {
   return null;
 }
 
+export function extractPriceNearMercadoLivreId(
+  html: string,
+  mercadoLivreId: string | null | undefined
+): number | null {
+  if (!mercadoLivreId?.trim()) return null;
+
+  const numericId = mercadoLivreId.replace(/^MLB-?/i, "");
+  if (!numericId) return null;
+
+  const patterns = [
+    new RegExp(
+      `MLB-?${numericId}[\\s\\S]{0,5000}?class=["'][^"']*andes-money-amount__fraction["'][^>]*>([\\d.]+)`,
+      "i"
+    ),
+    new RegExp(
+      `MLB-?${numericId}[\\s\\S]{0,5000}?aria-label=["']([^"']*reais[^"']*)["']`,
+      "i"
+    ),
+    new RegExp(`MLB-?${numericId}[\\s\\S]{0,5000}?"price"\\s*:\\s*([\\d.]+)`, "i"),
+    new RegExp(
+      `item_id(?:%3A|:)MLB${numericId}[\\s\\S]{0,5000}?"price"\\s*:\\s*([\\d.]+)`,
+      "i"
+    ),
+  ];
+
+  for (const pattern of patterns) {
+    const match = html.match(pattern);
+    const price = normalizePrice(match?.[1] ? decodeHtmlEntities(match[1]) : null);
+    if (price != null) return price;
+  }
+
+  return null;
+}
+
 export function extractPriceFromScripts(html: string): number | null {
   const brlChunks = html.split(/"currency_id"\s*:\s*"BRL"/i);
 
@@ -172,11 +206,18 @@ export function extractPriceFromScripts(html: string): number | null {
 
 export function extractMercadoLivrePrice(
   html: string,
-  options?: { preferSocial?: boolean }
+  options?: { preferSocial?: boolean; mercadoLivreId?: string | null }
 ): {
   price: number | null;
   source: string | null;
 } {
+  if (options?.mercadoLivreId) {
+    const targetedPrice = extractPriceNearMercadoLivreId(html, options.mercadoLivreId);
+    if (targetedPrice != null) {
+      return { price: targetedPrice, source: "social_profile_mlb" };
+    }
+  }
+
   if (options?.preferSocial) {
     const socialPrice = extractPriceFromSocialPage(html);
     if (socialPrice != null) return { price: socialPrice, source: "social_profile" };

@@ -48,7 +48,14 @@ export function resolveProductSyncUrl(input: {
 
   for (const raw of candidates) {
     const trimmed = raw.trim();
-    if (isMercadoLivreAffiliateUrl(trimmed) || isMercadoLivreUrl(trimmed)) {
+    if (isMercadoLivreAffiliateUrl(trimmed)) {
+      return normalizeSyncUrl(trimmed);
+    }
+  }
+
+  for (const raw of candidates) {
+    const trimmed = raw.trim();
+    if (isMercadoLivreUrl(trimmed) && !isMercadoLivreProductPageUrl(trimmed)) {
       return normalizeSyncUrl(trimmed);
     }
   }
