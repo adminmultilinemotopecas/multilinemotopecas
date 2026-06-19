@@ -8,8 +8,17 @@ const previewNameEl = document.getElementById("previewName");
 const previewPriceEl = document.getElementById("previewPrice");
 const previewImagesEl = document.getElementById("previewImages");
 const previewIdEl = document.getElementById("previewId");
+const importPanel = document.getElementById("importPanel");
+const syncPanel = document.getElementById("syncPanel");
+const syncCurrentBtn = document.getElementById("syncCurrentBtn");
+const syncAllBtn = document.getElementById("syncAllBtn");
+const syncStatusEl = document.getElementById("syncStatus");
+const syncProgressEl = document.getElementById("syncProgress");
+const footerNoteEl = document.getElementById("footerNote");
+const tabButtons = document.querySelectorAll(".tab");
 
 let scrapedData = null;
+let syncProgressInterval = null;
 
 function formatPrice(value) {
   if (value == null || Number.isNaN(value)) return "Preço não identificado";
@@ -22,6 +31,11 @@ function formatPrice(value) {
 function setStatus(message, type = "") {
   statusEl.textContent = message;
   statusEl.className = `status${type ? ` ${type}` : ""}`;
+}
+
+function setSyncStatus(message, type = "") {
+  syncStatusEl.textContent = message;
+  syncStatusEl.className = `status${type ? ` ${type}` : ""}`;
 }
 
 function isMercadoLivreUrl(url) {
@@ -68,19 +82,31 @@ async function getApiBaseUrl() {
 }
 
 async function scrapeActiveTab(tabId) {
-  const [{ result }] = await chrome.scripting.executeScript({
-    target: { tabId },
-    func: () => {
-      if (typeof window.scrapeMercadoLivreProduct !== "function") {
-        throw new Error(
-          "Scraper não carregado. Recarregue a página do Mercado Livre e tente novamente."
-        );
-      }
-      return window.scrapeMercadoLivreProduct();
-    },
-  });
+  return MultilinePriceSync.scrapePriceFromTab(tabId).then((result) => {
+    if (!result?.ok) {
+      throw new Error(result?.error || "Falha ao analisar página.");
+    }
 
-  return result;
+    return {
+      name: result.pageTitle,
+      mercadoLivreId: result.mercadoLivreId,
+      price: result.price,
+      promotionalPrice: result.promotionalPrice,
+      sourcePageUrl: result.sourcePageUrl,
+      images: [],
+      shortDescription: null,
+      fullDescription: null,
+      technicalSpecs: null,
+      applications: null,
+      compatibilities: null,
+      productReferences: null,
+      tags: [],
+      stock: null,
+      sellerName: null,
+      condition: null,
+      categoryPath: null,
+    };
+  });
 }
 
 async function loadPagePreview() {
@@ -185,7 +211,97 @@ async function restoreAffiliateUrl() {
   }
 }
 
+function switchTab(tabName) {
+  tabButtons.forEach((button) => {
+    button.classList.toggle("active", button.dataset.tab === tabName);
+  });
+
+  importPanel.classList.toggle("hidden", tabName !== "import");
+  syncPanel.classList.toggle("hidden", tabName !== "sync");
+  footerNoteEl.innerHTML =
+    tabName === "sync"
+      ? "Sincronização usa cookies do <strong>Mercado Livre</strong> logado neste navegador."
+      : "Produtos importados entram como <strong>pendente de revisão</strong>.";
+}
+
+function startSyncProgressPolling() {
+  if (syncProgressInterval) {
+    window.clearInterval(syncProgressInterval);
+  }
+
+  syncProgressInterval = window.setInterval(async () => {
+    const stored = await chrome.storage.session.get(["multilineSyncAllProgress"]);
+    const progress = stored.multilineSyncAllProgress;
+    if (!progress) return;
+
+    syncProgressEl.textContent = progress.currentProductName
+      ? `${progress.processed}/${progress.total} — ${progress.currentProductName}`
+      : `${progress.processed}/${progress.total} — Sucesso: ${progress.succeeded} · Falhas: ${progress.failed}`;
+  }, 800);
+}
+
+function stopSyncProgressPolling() {
+  if (syncProgressInterval) {
+    window.clearInterval(syncProgressInterval);
+    syncProgressInterval = null;
+  }
+}
+
+async function handleSyncCurrent() {
+  syncCurrentBtn.disabled = true;
+  syncAllBtn.disabled = true;
+  setSyncStatus("Sincronizando anúncio atual...");
+  syncProgressEl.textContent = "";
+
+  try {
+    const payload = await MultilinePriceSync.syncCurrentTabProduct();
+    setSyncStatus(
+      `${payload.product.name}: ${payload.result.message || "Preço sincronizado."}`,
+      "success"
+    );
+  } catch (error) {
+    setSyncStatus(error.message || "Falha ao sincronizar anúncio.", "error");
+  } finally {
+    syncCurrentBtn.disabled = false;
+    syncAllBtn.disabled = false;
+  }
+}
+
+async function handleSyncAll() {
+  syncCurrentBtn.disabled = true;
+  syncAllBtn.disabled = true;
+  setSyncStatus("Sincronizando todos os produtos via navegador...");
+  syncProgressEl.textContent = "Iniciando...";
+  startSyncProgressPolling();
+
+  try {
+    const stats = await MultilinePriceSync.syncAllProducts((progress) => {
+      syncProgressEl.textContent = progress.currentProductName
+        ? `${progress.processed}/${progress.total} — ${progress.currentProductName}`
+        : `${progress.processed}/${progress.total}`;
+    });
+
+    setSyncStatus(
+      `Concluído: ${stats.succeeded} sucesso · ${stats.failed} falhas de ${stats.total}.`,
+      stats.failed > 0 ? "error" : "success"
+    );
+  } catch (error) {
+    setSyncStatus(error.message || "Falha ao sincronizar todos.", "error");
+  } finally {
+    stopSyncProgressPolling();
+    syncCurrentBtn.disabled = false;
+    syncAllBtn.disabled = false;
+  }
+}
+
+tabButtons.forEach((button) => {
+  button.addEventListener("click", () => switchTab(button.dataset.tab));
+});
+
 importBtn.addEventListener("click", importProduct);
+syncCurrentBtn.addEventListener("click", handleSyncCurrent);
+syncAllBtn.addEventListener("click", handleSyncAll);
+
 document.addEventListener("DOMContentLoaded", async () => {
   await restoreAffiliateUrl();
   await loadPagePreview();

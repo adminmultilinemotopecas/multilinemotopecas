@@ -70,6 +70,7 @@ export async function syncProductPrice(input: {
   manualPrice?: number;
   manualPromotionalPrice?: number | null;
   afterBrowserValidation?: boolean;
+  browserScraped?: boolean;
 }): Promise<PriceSyncApplyResult> {
   const product = await prisma.products.findUnique({
     where: { id: input.productId },
@@ -165,15 +166,17 @@ export async function syncProductPrice(input: {
 
   const checkedAt = new Date().toISOString();
   const browserSession =
-    input.adminUserId && input.triggerSource !== "cron"
+    input.adminUserId && input.triggerSource !== "cron" && !input.browserScraped
       ? getMlBrowserSession(input.adminUserId)
       : null;
 
-  const scrape: PriceScrapeResult =
-    input.manualPrice != null && Number.isFinite(input.manualPrice)
+  const useBrowserPrice =
+    input.manualPrice != null && Number.isFinite(input.manualPrice);
+
+  const scrape: PriceScrapeResult = useBrowserPrice
       ? {
           success: true,
-          price: Math.round(input.manualPrice * 100) / 100,
+          price: Math.round(input.manualPrice! * 100) / 100,
           promotionalPrice:
             input.manualPromotionalPrice != null &&
             Number.isFinite(input.manualPromotionalPrice)
@@ -184,7 +187,9 @@ export async function syncProductPrice(input: {
           status: "success" as const,
           confidenceScore: 1,
           evidence: {
-            strategies: ["manual_browser_validation"],
+            strategies: input.browserScraped
+              ? ["extension_browser_session", "browser_scrape"]
+              : ["manual_browser_validation"],
             finalUrl: sourceUrl,
           },
         }

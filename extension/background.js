@@ -1,3 +1,5 @@
+importScripts("sync-prices.js");
+
 const validationSessions = new Map();
 const SESSION_STORAGE_KEY = "mlValidationSessions";
 
@@ -526,6 +528,36 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
       }
     });
 
+    return true;
+  }
+
+  if (message?.type === "SYNC_PRODUCT_BROWSER") {
+    MultilinePriceSync.syncProductByBrowser(message.productId, message.sourceUrl)
+      .then((payload) => {
+        sendResponse({ ok: true, ...payload });
+      })
+      .catch((error) => {
+        sendResponse({
+          ok: false,
+          error: error instanceof Error ? error.message : "Falha ao sincronizar via navegador",
+        });
+      });
+    return true;
+  }
+
+  if (message?.type === "SYNC_ALL_BROWSER") {
+    MultilinePriceSync.syncAllProducts((progress) => {
+      void chrome.storage.session.set({ multilineSyncAllProgress: progress });
+    })
+      .then((stats) => {
+        sendResponse({ ok: true, stats });
+      })
+      .catch((error) => {
+        sendResponse({
+          ok: false,
+          error: error instanceof Error ? error.message : "Falha ao sincronizar todos",
+        });
+      });
     return true;
   }
 

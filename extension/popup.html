@@ -3,19 +3,24 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Importar ML</title>
+    <title>Multiline Motopeças</title>
     <link rel="stylesheet" href="popup.css" />
   </head>
   <body>
     <header class="header">
       <img src="icons/icon-48.png" alt="Multiline Motopeças" class="logo" />
       <div>
-        <h1>Importar Produto</h1>
-        <p>Multiline Motopeças</p>
+        <h1>Multiline Motopeças</h1>
+        <p>Mercado Livre</p>
       </div>
     </header>
 
-    <main>
+    <nav class="tabs">
+      <button type="button" class="tab active" data-tab="import">Importar</button>
+      <button type="button" class="tab" data-tab="sync">Sincronizar preços</button>
+    </nav>
+
+    <main id="importPanel" class="panel">
       <label for="affiliateUrl">Link de afiliado do Mercado Livre</label>
       <input
         id="affiliateUrl"
@@ -39,10 +44,23 @@
       <button id="importBtn" type="button">Importar para revisão</button>
     </main>
 
+    <main id="syncPanel" class="panel hidden">
+      <p class="sync-intro">
+        Usa sua sessão logada do Mercado Livre no navegador. Mantenha o admin aberto e logado.
+      </p>
+
+      <button id="syncCurrentBtn" type="button" class="secondary">Sincronizar este anúncio</button>
+      <button id="syncAllBtn" type="button">Sincronizar todos os preços</button>
+
+      <p id="syncStatus" class="status" aria-live="polite"></p>
+      <p id="syncProgress" class="sync-progress"></p>
+    </main>
+
     <footer>
-      <small>O produto entra como <strong>pendente de revisão</strong> e não é publicado automaticamente.</small>
+      <small id="footerNote">Produtos importados entram como <strong>pendente de revisão</strong>.</small>
     </footer>
 
+    <script src="sync-prices.js"></script>
     <script src="popup.js"></script>
   </body>
 </html>

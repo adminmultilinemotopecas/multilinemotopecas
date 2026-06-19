@@ -9,6 +9,26 @@ export interface MultilineMlBridge {
     adminOrigin: string;
     sourceUrl: string;
   }): Promise<{ ok: boolean; error?: string }>;
+  syncProductPrice(input: {
+    productId: string;
+    sourceUrl: string;
+    adminOrigin?: string;
+  }): Promise<{
+    ok: boolean;
+    result?: { message?: string; updated?: boolean; newPrice?: number | null };
+    scrape?: { price?: number; promotionalPrice?: number | null };
+    error?: string;
+  }>;
+  syncAllProductPrices(): Promise<{
+    ok: boolean;
+    stats?: {
+      total: number;
+      processed: number;
+      succeeded: number;
+      failed: number;
+    };
+    error?: string;
+  }>;
   onSessionCaptured(
     callback: (detail: {
       sourceUrl?: string | null;

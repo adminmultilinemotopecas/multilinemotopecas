@@ -3,6 +3,10 @@
 import { useCallback, useEffect, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { adminFetch, AdminApiError } from "@/lib/admin/client";
+import {
+  syncAllPricesViaBrowser,
+  syncProductPriceViaBrowser,
+} from "@/lib/admin/ml-price-sync-client";
 import { Loader2, RefreshCw } from "lucide-react";
 import { MlBrowserValidationDialog } from "@/components/admin/ml-browser-validation-dialog";
 import {
@@ -134,7 +138,23 @@ export function ProductPriceSyncButton({
     setLoading(true);
     setFeedback(null);
 
+    const sourceUrl = resolveSourceUrl();
+
     try {
+      const browserSync = await syncProductPriceViaBrowser({
+        productId: product.id,
+        sourceUrl,
+      });
+
+      if (browserSync.ok) {
+        await handleSyncResult(browserSync.result);
+        return;
+      }
+
+      if (browserSync.reason === "error") {
+        setFeedback(browserSync.error || "Falha na sincronização via navegador.");
+      }
+
       const result = await requestPriceSync(product.id);
       await handleSyncResult(result);
     } catch (error) {
@@ -271,7 +291,20 @@ export function SyncAllPricesPanel({ onComplete }: { onComplete?: () => void }) 
   async function handleStart() {
     setLoading(true);
     setError(null);
+
     try {
+      const browserSync = await syncAllPricesViaBrowser();
+      if (browserSync.ok) {
+        setError(null);
+        await loadStatus();
+        onComplete?.();
+        return;
+      }
+
+      if (browserSync.reason === "error") {
+        setError(browserSync.error || "Falha ao sincronizar via navegador.");
+      }
+
       await adminFetch("/api/admin/products/sync-prices", { method: "POST" });
       await loadStatus();
     } catch (err) {
@@ -291,7 +324,8 @@ export function SyncAllPricesPanel({ onComplete }: { onComplete?: () => void }) 
           <div>
             <h2 className="font-semibold">Sincronização de preços ML</h2>
             <p className="text-sm text-muted-foreground">
-              {status?.eligibleCount ?? 0} produto(s) elegível(is)
+              {status?.eligibleCount ?? 0} produto(s) elegível(is). Usa a sessão do Mercado Livre
+              no seu navegador (extensão v1.3+).
             </p>
           </div>
           <Button type="button" onClick={handleStart} disabled={loading || running}>

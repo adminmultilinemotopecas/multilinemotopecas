@@ -154,6 +154,45 @@
       });
     },
 
+    syncProductPrice({ productId, sourceUrl }) {
+      return new Promise((resolve, reject) => {
+        chrome.runtime.sendMessage(
+          {
+            type: "SYNC_PRODUCT_BROWSER",
+            productId,
+            sourceUrl,
+          },
+          (response) => {
+            if (chrome.runtime.lastError) {
+              reject(new Error(chrome.runtime.lastError.message));
+              return;
+            }
+            if (!response?.ok) {
+              reject(new Error(response?.error || "Falha ao sincronizar via navegador."));
+              return;
+            }
+            resolve(response);
+          }
+        );
+      });
+    },
+
+    syncAllProductPrices() {
+      return new Promise((resolve, reject) => {
+        chrome.runtime.sendMessage({ type: "SYNC_ALL_BROWSER" }, (response) => {
+          if (chrome.runtime.lastError) {
+            reject(new Error(chrome.runtime.lastError.message));
+            return;
+          }
+          if (!response?.ok) {
+            reject(new Error(response?.error || "Falha ao sincronizar todos os preços."));
+            return;
+          }
+          resolve(response);
+        });
+      });
+    },
+
     onSessionCaptured(callback) {
       function handler(event) {
         callback(event.detail || {});
