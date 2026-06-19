@@ -1,5 +1,14 @@
 export type ProductStatus = "active" | "inactive" | "draft" | "out_of_stock";
 export type ListingStatus = "active" | "paused" | "closed" | "not_listed";
+export type PriceSyncStatus =
+  | "success"
+  | "failed"
+  | "skipped"
+  | "low_confidence"
+  | "no_url"
+  | "blocked"
+  | "unavailable"
+  | "inactive";
 export type AnalyticsEventType =
   | "purchase_click"
   | "product_view"
@@ -72,6 +81,12 @@ export interface Product {
   seo_keywords: string[];
   mercado_livre_url: string | null;
   mercado_livre_id: string | null;
+  ml_source_url: string | null;
+  last_price_sync_at: string | null;
+  last_price_sync_status: PriceSyncStatus | null;
+  last_price_sync_error: string | null;
+  last_synced_price: number | null;
+  price_sync_enabled: boolean;
   listing_status: ListingStatus;
   status: ProductStatus;
   is_featured: boolean;

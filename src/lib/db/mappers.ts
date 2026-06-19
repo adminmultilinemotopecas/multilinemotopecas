@@ -175,6 +175,12 @@ type ProductRecord = {
   seo_keywords: string[];
   mercado_livre_url: string | null;
   mercado_livre_id: string | null;
+  ml_source_url: string | null;
+  last_price_sync_at: Date | null;
+  last_price_sync_status: Product["last_price_sync_status"];
+  last_price_sync_error: string | null;
+  last_synced_price: Prisma.Decimal | null;
+  price_sync_enabled: boolean;
   listing_status: Product["listing_status"];
   status: Product["status"];
   is_featured: boolean;
@@ -226,6 +232,14 @@ export function mapProduct(record: ProductRecord): Product {
     seo_keywords: record.seo_keywords,
     mercado_livre_url: record.mercado_livre_url,
     mercado_livre_id: record.mercado_livre_id,
+    ml_source_url: record.ml_source_url,
+    last_price_sync_at: record.last_price_sync_at
+      ? toIsoString(record.last_price_sync_at)
+      : null,
+    last_price_sync_status: record.last_price_sync_status,
+    last_price_sync_error: record.last_price_sync_error,
+    last_synced_price: decimalToNumber(record.last_synced_price),
+    price_sync_enabled: record.price_sync_enabled,
     listing_status: record.listing_status,
     status: record.status,
     is_featured: record.is_featured,

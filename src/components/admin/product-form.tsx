@@ -22,6 +22,7 @@ import {
 } from "@/lib/motorcycle-utils";
 import type { Product, Brand, Category, MotorcycleModel, ProductImage } from "@/types/database";
 import { ArrowDown, ArrowUp, ImagePlus, Loader2, Save, Trash2 } from "lucide-react";
+import { ProductPriceSyncButton } from "@/components/admin/price-sync-controls";
 
 interface ProductFormProps {
   product?: Product;
@@ -115,6 +116,8 @@ export function ProductForm({
     seo_keywords: product?.seo_keywords?.join(", ") || "",
     mercado_livre_url: product?.mercado_livre_url || "",
     mercado_livre_id: product?.mercado_livre_id || "",
+    ml_source_url: product?.ml_source_url || "",
+    price_sync_enabled: product?.price_sync_enabled ?? true,
     listing_status: product?.listing_status || "not_listed",
     status: product?.status || "draft",
     is_featured: product?.is_featured || false,
@@ -227,6 +230,8 @@ export function ProductForm({
         : [],
       mercado_livre_url: form.mercado_livre_url.trim() || null,
       mercado_livre_id: form.mercado_livre_id.trim() || null,
+      ml_source_url: form.ml_source_url.trim() || null,
+      price_sync_enabled: form.price_sync_enabled,
       listing_status: form.listing_status,
       status: form.status,
       is_featured: form.is_featured,
@@ -495,7 +500,19 @@ export function ProductForm({
         </CardHeader>
         <CardContent className="grid grid-cols-1 md:grid-cols-2 gap-4">
           <div className="md:col-span-2">
-            <Label>URL do Anúncio</Label>
+            <Label>URL de origem (página ML para sync de preço)</Label>
+            <Input
+              value={form.ml_source_url}
+              onChange={(e) => updateField("ml_source_url", e.target.value)}
+              placeholder="https://produto.mercadolivre.com.br/MLB-..."
+              className="mt-1"
+            />
+            <p className="text-xs text-muted-foreground mt-1">
+              URL da página original do anúncio. Usada para sincronizar preços automaticamente.
+            </p>
+          </div>
+          <div className="md:col-span-2">
+            <Label>URL do Anúncio (afiliado)</Label>
             <Input value={form.mercado_livre_url} onChange={(e) => updateField("mercado_livre_url", e.target.value)} placeholder="https://meli.la/... ou https://produto.mercadolivre.com.br/..." className="mt-1" />
           </div>
           <div>
@@ -514,6 +531,24 @@ export function ProductForm({
               </SelectContent>
             </Select>
           </div>
+          <div className="md:col-span-2 flex items-center gap-2">
+            <input
+              id="price_sync_enabled"
+              type="checkbox"
+              checked={form.price_sync_enabled}
+              onChange={(e) => updateField("price_sync_enabled", e.target.checked)}
+              className="h-4 w-4 rounded border-input"
+            />
+            <Label htmlFor="price_sync_enabled">Sincronização automática de preço habilitada</Label>
+          </div>
+          {product && (
+            <div className="md:col-span-2">
+              <ProductPriceSyncButton
+                product={product}
+                onSynced={() => router.refresh()}
+              />
+            </div>
+          )}
         </CardContent>
       </Card>
 

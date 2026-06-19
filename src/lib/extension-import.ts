@@ -5,6 +5,10 @@ import {
   extractMercadoLivreId,
   isMercadoLivreUrl,
 } from "@/lib/mercado-livre-verify";
+import {
+  isMercadoLivreProductPageUrl,
+  normalizeSyncUrl,
+} from "@/lib/ml-price-sync/url-validator";
 import { slugify } from "@/lib/utils";
 
 export interface ExtensionScrapedProduct {
@@ -256,6 +260,10 @@ export async function importProductFromExtension(
 
   const scraped = input.scraped;
   const affiliateUrl = input.affiliateUrl.trim();
+  const sourcePageUrl = input.sourcePageUrl.trim();
+  const mlSourceUrl = isMercadoLivreProductPageUrl(sourcePageUrl)
+    ? normalizeSyncUrl(sourcePageUrl)
+    : null;
   const mercadoLivreId =
     scraped.mercadoLivreId ||
     extractMercadoLivreId(affiliateUrl) ||
@@ -305,6 +313,8 @@ export async function importProductFromExtension(
     seo_keywords: tags,
     mercado_livre_url: affiliateUrl,
     mercado_livre_id: mercadoLivreId,
+    ml_source_url: mlSourceUrl,
+    price_sync_enabled: true,
     listing_status: "not_listed" as const,
     status: "inactive" as const,
     is_featured: false,

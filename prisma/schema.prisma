@@ -21,6 +21,17 @@ enum listing_status {
   not_listed
 }
 
+enum price_sync_status {
+  success
+  failed
+  skipped
+  low_confidence
+  no_url
+  blocked
+  unavailable
+  inactive
+}
+
 enum analytics_event_type {
   purchase_click
   product_view
@@ -193,6 +204,41 @@ model product_reviews {
   @@map("product_reviews")
 }
 
+model price_sync_logs {
+  id                    String             @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  product_id            String             @db.Uuid
+  old_price             Decimal?           @db.Decimal(10, 2)
+  new_price             Decimal?           @db.Decimal(10, 2)
+  old_promotional_price Decimal?           @db.Decimal(10, 2)
+  new_promotional_price Decimal?           @db.Decimal(10, 2)
+  status                price_sync_status
+  error                 String?
+  source_url            String?
+  confidence_score      Decimal?           @db.Decimal(5, 4)
+  evidence              Json               @default("{}")
+  trigger_source        String             @default("manual")
+  created_at            DateTime           @default(now()) @db.Timestamptz(6)
+  products              products           @relation(fields: [product_id], references: [id], onDelete: Cascade)
+
+  @@index([product_id, created_at(sort: Desc)], map: "idx_price_sync_logs_product_id")
+  @@map("price_sync_logs")
+}
+
+model price_sync_daily_runs {
+  id              String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  run_date        DateTime  @unique @db.Date
+  started_at      DateTime  @default(now()) @db.Timestamptz(6)
+  completed_at    DateTime? @db.Timestamptz(6)
+  status          String    @default("running")
+  total_products  Int       @default(0)
+  processed       Int       @default(0)
+  succeeded       Int       @default(0)
+  failed          Int       @default(0)
+  skipped         Int       @default(0)
+
+  @@map("price_sync_daily_runs")
+}
+
 model products {
   id                       String               @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
   name                     String
@@ -217,6 +263,12 @@ model products {
   seo_keywords             String[]             @default([])
   mercado_livre_url        String?
   mercado_livre_id         String?
+  ml_source_url            String?
+  last_price_sync_at       DateTime?            @db.Timestamptz(6)
+  last_price_sync_status   price_sync_status?
+  last_price_sync_error    String?
+  last_synced_price        Decimal?             @db.Decimal(10, 2)
+  price_sync_enabled       Boolean              @default(true)
   listing_status           listing_status       @default(not_listed)
   status                   product_status       @default(draft)
   is_featured              Boolean              @default(false)
@@ -240,6 +292,7 @@ model products {
   product_images           product_images[]
   product_motorcycle_compatibility product_motorcycle_compatibility[]
   product_reviews          product_reviews[]
+  price_sync_logs          price_sync_logs[]
 
   @@index([slug], map: "idx_products_slug")
   @@index([sku], map: "idx_products_sku")

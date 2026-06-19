@@ -36,6 +36,8 @@ export interface SaveProductInput {
   seo_keywords?: string[];
   mercado_livre_url?: string | null;
   mercado_livre_id?: string | null;
+  ml_source_url?: string | null;
+  price_sync_enabled?: boolean;
   listing_status?: ListingStatus;
   status?: ProductStatus;
   is_featured?: boolean;
@@ -71,6 +73,8 @@ function buildProductData(input: SaveProductInput, slug: string, isNew: boolean)
     seo_keywords: input.seo_keywords ?? [],
     mercado_livre_url: input.mercado_livre_url?.trim() || null,
     mercado_livre_id: input.mercado_livre_id?.trim() || null,
+    ml_source_url: input.ml_source_url?.trim() || null,
+    price_sync_enabled: input.price_sync_enabled ?? true,
     listing_status: input.listing_status ?? "not_listed",
     status: input.status ?? "draft",
     is_featured: input.is_featured ?? false,

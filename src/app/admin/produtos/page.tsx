@@ -6,6 +6,11 @@ import { Plus, Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { DataTable } from "@/components/admin/data-table";
+import {
+  ProductPriceSyncButton,
+  SyncAllPricesPanel,
+} from "@/components/admin/price-sync-controls";
+import { PriceSyncStatusDisplay } from "@/components/admin/price-sync-status";
 import { adminFetch } from "@/lib/admin/client";
 import { formatPrice } from "@/lib/utils";
 import type { Product } from "@/types/database";
@@ -53,6 +58,10 @@ export default function AdminProductsPage() {
         </Button>
       </div>
 
+      <div className="mb-6">
+        <SyncAllPricesPanel onComplete={loadProducts} />
+      </div>
+
       <DataTable
         data={products}
         columns={[
@@ -73,6 +82,29 @@ export default function AdminProductsPage() {
             label: "Preço Promocional",
             render: (p) =>
               p.promotional_price != null ? formatPrice(p.promotional_price) : "-",
+          },
+          {
+            key: "price_sync",
+            label: "Sync ML",
+            render: (p) => (
+              <PriceSyncStatusDisplay
+                mlSourceUrl={p.ml_source_url}
+                mercadoLivreUrl={p.mercado_livre_url}
+                lastPriceSyncAt={p.last_price_sync_at}
+                lastPriceSyncStatus={p.last_price_sync_status}
+                lastPriceSyncError={p.last_price_sync_error}
+                lastSyncedPrice={p.last_synced_price}
+                priceSyncEnabled={p.price_sync_enabled}
+                compact
+              />
+            ),
+          },
+          {
+            key: "sync_action",
+            label: "Sincronizar",
+            render: (p) => (
+              <ProductPriceSyncButton product={p} onSynced={loadProducts} />
+            ),
           },
           {
             key: "status",
