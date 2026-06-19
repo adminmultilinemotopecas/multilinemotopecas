@@ -148,7 +148,7 @@ export function MlBrowserValidationDialog({
     }, 800);
 
     return () => window.clearInterval(interval);
-  }, [open, extensionTabIdRef.current]);
+  }, [open]);
 
   if (!open) return null;
 

@@ -5,10 +5,7 @@ import {
   compareProductNames,
   type MlVerificationResult,
 } from "@/lib/mercado-livre-verify";
-import {
-  getMlBrowserSession,
-  type MlBrowserSession,
-} from "@/lib/ml-price-sync/ml-browser-session";
+import type { MlBrowserSession } from "@/lib/ml-price-sync/ml-browser-session";
 import {
   assertSafeMercadoLivreUrl,
   isMercadoLivreProductPageUrl,

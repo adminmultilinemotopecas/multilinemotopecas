@@ -169,7 +169,7 @@ export async function syncProductPrice(input: {
       ? getMlBrowserSession(input.adminUserId)
       : null;
 
-  let scrape: PriceScrapeResult =
+  const scrape: PriceScrapeResult =
     input.manualPrice != null && Number.isFinite(input.manualPrice)
       ? {
           success: true,
