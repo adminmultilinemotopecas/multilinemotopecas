@@ -303,7 +303,7 @@ export function ProductForm({
     setLoading(true);
     setError("");
     try {
-      await submitProduct(pendingPayload);
+      await submitProduct(pendingPayload, { skipMlNetworkVerify: true });
       setMlValidationDialog(null);
       setPendingPayload(null);
     } catch (err) {
@@ -832,11 +832,11 @@ export function ProductForm({
         sourceUrl={mlValidationDialog.sourceUrl}
         productName={form.name}
         title="Validar link do Mercado Livre"
-        description="O Mercado Livre pediu verificação ao salvar. Abra a página, conclua login/captcha e feche a aba — a extensão captura cookies e sessão para continuar o salvamento."
+        description="O Mercado Livre pediu verificação ao salvar. Abra a página, conclua login/captcha e feche a janela — o salvamento continuará automaticamente."
         confirmLabel="Concluí validação — salvar produto"
         showManualPrice={false}
         loading={loading}
-        autoContinueOnSession
+        autoContinueOnPopupClose
         onRetrySync={handleSaveAfterMlValidation}
       />
     )}
