@@ -500,6 +500,7 @@ export async function syncMercadoLivrePrice(
           oldPrice,
           oldPromotionalPrice,
           extractedPrice: extracted.price,
+          extractedPromotionalPrice: extracted.promotionalPrice,
           extractionSource,
         });
         status = evaluated.status;

@@ -19,6 +19,12 @@ export function normalizePrice(value: unknown): number | null {
   return Math.round(parsed * 100) / 100;
 }
 
+export interface ExtractedMercadoLivrePrices {
+  price: number | null;
+  promotionalPrice: number | null;
+  source: string | null;
+}
+
 function decodeHtmlEntities(text: string): string {
   return text
     .replace(/&amp;/g, "&")
@@ -32,6 +38,46 @@ function decodeHtmlEntities(text: string): string {
 function isBrlCurrency(value: unknown): boolean {
   if (value == null) return true;
   return /^BRL$/i.test(String(value).trim());
+}
+
+function parseMercadoLivreMoneyLabel(label: string): number | null {
+  const text = decodeHtmlEntities(label).toLowerCase();
+  const match = text.match(
+    /(\d{1,3}(?:\.\d{3})*|\d+)\s*reais(?:\s*(?:com|e)\s*(\d{1,2})\s*centavos?)?/
+  );
+  if (!match) return null;
+
+  const reais = match[1].replace(/\./g, "");
+  const cents = (match[2] ?? "0").padStart(2, "0");
+  return normalizePrice(`${reais}.${cents}`);
+}
+
+function extractPrimarySocialCardHtml(html: string): string {
+  const start = html.search(/social-post|poly-card|poly-price/i);
+  if (start === -1) return html;
+
+  const slice = html.slice(start, start + 12000);
+  const altIdx = slice.search(/outra op[cç][aã]o de compra/i);
+  return altIdx > 0 ? slice.slice(0, altIdx) : slice;
+}
+
+function normalizePricePair(input: {
+  originalPrice: number | null;
+  currentPrice: number | null;
+}): { price: number | null; promotionalPrice: number | null } {
+  const { originalPrice, currentPrice } = input;
+
+  if (
+    originalPrice != null &&
+    currentPrice != null &&
+    originalPrice > currentPrice &&
+    originalPrice - currentPrice >= 0.5
+  ) {
+    return { price: originalPrice, promotionalPrice: currentPrice };
+  }
+
+  const single = currentPrice ?? originalPrice;
+  return { price: single, promotionalPrice: null };
 }
 
 function readOffersPrice(
@@ -53,6 +99,47 @@ function readOffersPrice(
   }
 
   return null;
+}
+
+export function extractPricesFromSocialPage(html: string): {
+  price: number | null;
+  promotionalPrice: number | null;
+} {
+  const scope = extractPrimarySocialCardHtml(html);
+  let originalPrice: number | null = null;
+  let currentPrice: number | null = null;
+
+  for (const match of scope.matchAll(/aria-label=["']([^"']+)["']/gi)) {
+    const label = match[1];
+    const value = parseMercadoLivreMoneyLabel(label);
+    if (value == null) continue;
+
+    if (/antes/i.test(label)) originalPrice = value;
+    if (/agora/i.test(label)) currentPrice = value;
+  }
+
+  if (currentPrice == null || originalPrice == null) {
+    const previousMatch = scope.match(
+      /andes-money-amount--previous[\s\S]{0,700}?andes-money-amount__fraction[^>]*>([\d.]+)[\s\S]{0,180}?andes-money-amount__cents[^>]*>(\d+)/i
+    );
+    const currentMatch = scope.match(
+      /andes-money-amount--cents-superscript[\s\S]{0,700}?andes-money-amount__fraction[^>]*>([\d.]+)[\s\S]{0,180}?andes-money-amount__cents[^>]*>(\d+)/i
+    );
+
+    if (previousMatch) {
+      originalPrice =
+        normalizePrice(`${previousMatch[1].replace(/\./g, "")}.${previousMatch[2]}`) ??
+        originalPrice;
+    }
+
+    if (currentMatch) {
+      currentPrice =
+        normalizePrice(`${currentMatch[1].replace(/\./g, "")}.${currentMatch[2]}`) ??
+        currentPrice;
+    }
+  }
+
+  return normalizePricePair({ originalPrice, currentPrice });
 }
 
 export function extractPriceFromJsonLd(html: string): number | null {
@@ -127,54 +214,38 @@ export function extractPriceFromMetaTags(html: string): number | null {
   return null;
 }
 
+/** @deprecated Use extractPricesFromSocialPage */
 export function extractPriceFromSocialPage(html: string): number | null {
-  const socialPatterns = [
-    /class=["'][^"']*andes-money-amount[^"']*["'][^>]*aria-label=["']([^"']+)["']/i,
-    /aria-label=["'](\d[\d.,]*)\s*reais?[^"']*["'][^>]*class=["'][^"']*andes-money-amount/i,
-    /class=["'][^"']*social-post[^"']*["'][\s\S]{0,2500}?class=["'][^"']*andes-money-amount__fraction["'][^>]*>([\d.]+)/i,
-  ];
-
-  for (const pattern of socialPatterns) {
-    const match = html.match(pattern);
-    const price = normalizePrice(match?.[1] ? decodeHtmlEntities(match[1]) : null);
-    if (price != null) return price;
-  }
-
-  return null;
+  return extractPricesFromSocialPage(html).price;
 }
 
+export function extractPricesNearMercadoLivreId(
+  html: string,
+  mercadoLivreId: string | null | undefined
+): { price: number | null; promotionalPrice: number | null } {
+  if (!mercadoLivreId?.trim()) {
+    return { price: null, promotionalPrice: null };
+  }
+
+  const numericId = mercadoLivreId.replace(/^MLB-?/i, "");
+  if (!numericId) return { price: null, promotionalPrice: null };
+
+  const start = html.search(new RegExp(`MLB-?${numericId}`, "i"));
+  if (start === -1) return { price: null, promotionalPrice: null };
+
+  const scope = html.slice(start, start + 12000);
+  const altIdx = scope.search(/outra op[cç][aã]o de compra/i);
+  const cardScope = altIdx > 0 ? scope.slice(0, altIdx) : scope;
+
+  return extractPricesFromSocialPage(cardScope);
+}
+
+/** @deprecated Use extractPricesNearMercadoLivreId */
 export function extractPriceNearMercadoLivreId(
   html: string,
   mercadoLivreId: string | null | undefined
 ): number | null {
-  if (!mercadoLivreId?.trim()) return null;
-
-  const numericId = mercadoLivreId.replace(/^MLB-?/i, "");
-  if (!numericId) return null;
-
-  const patterns = [
-    new RegExp(
-      `MLB-?${numericId}[\\s\\S]{0,5000}?class=["'][^"']*andes-money-amount__fraction["'][^>]*>([\\d.]+)`,
-      "i"
-    ),
-    new RegExp(
-      `MLB-?${numericId}[\\s\\S]{0,5000}?aria-label=["']([^"']*reais[^"']*)["']`,
-      "i"
-    ),
-    new RegExp(`MLB-?${numericId}[\\s\\S]{0,5000}?"price"\\s*:\\s*([\\d.]+)`, "i"),
-    new RegExp(
-      `item_id(?:%3A|:)MLB${numericId}[\\s\\S]{0,5000}?"price"\\s*:\\s*([\\d.]+)`,
-      "i"
-    ),
-  ];
-
-  for (const pattern of patterns) {
-    const match = html.match(pattern);
-    const price = normalizePrice(match?.[1] ? decodeHtmlEntities(match[1]) : null);
-    if (price != null) return price;
-  }
-
-  return null;
+  return extractPricesNearMercadoLivreId(html, mercadoLivreId).price;
 }
 
 export function extractPriceFromScripts(html: string): number | null {
@@ -207,33 +278,40 @@ export function extractPriceFromScripts(html: string): number | null {
 export function extractMercadoLivrePrice(
   html: string,
   options?: { preferSocial?: boolean; mercadoLivreId?: string | null }
-): {
-  price: number | null;
-  source: string | null;
-} {
+): ExtractedMercadoLivrePrices {
   if (options?.mercadoLivreId) {
-    const targetedPrice = extractPriceNearMercadoLivreId(html, options.mercadoLivreId);
-    if (targetedPrice != null) {
-      return { price: targetedPrice, source: "social_profile_mlb" };
+    const targeted = extractPricesNearMercadoLivreId(html, options.mercadoLivreId);
+    if (targeted.price != null) {
+      return { ...targeted, source: "social_profile_mlb" };
     }
   }
 
   if (options?.preferSocial) {
-    const socialPrice = extractPriceFromSocialPage(html);
-    if (socialPrice != null) return { price: socialPrice, source: "social_profile" };
+    const socialPrices = extractPricesFromSocialPage(html);
+    if (socialPrices.price != null) {
+      return { ...socialPrices, source: "social_profile" };
+    }
   }
 
   const jsonLdPrice = extractPriceFromJsonLd(html);
-  if (jsonLdPrice != null) return { price: jsonLdPrice, source: "json_ld" };
+  if (jsonLdPrice != null) {
+    return { price: jsonLdPrice, promotionalPrice: null, source: "json_ld" };
+  }
 
   const metaPrice = extractPriceFromMetaTags(html);
-  if (metaPrice != null) return { price: metaPrice, source: "meta_tags" };
+  if (metaPrice != null) {
+    return { price: metaPrice, promotionalPrice: null, source: "meta_tags" };
+  }
 
-  const socialPrice = extractPriceFromSocialPage(html);
-  if (socialPrice != null) return { price: socialPrice, source: "social_profile" };
+  const socialPrices = extractPricesFromSocialPage(html);
+  if (socialPrices.price != null) {
+    return { ...socialPrices, source: "social_profile" };
+  }
 
   const scriptPrice = extractPriceFromScripts(html);
-  if (scriptPrice != null) return { price: scriptPrice, source: "scripts" };
+  if (scriptPrice != null) {
+    return { price: scriptPrice, promotionalPrice: null, source: "scripts" };
+  }
 
-  return { price: null, source: null };
+  return { price: null, promotionalPrice: null, source: null };
 }

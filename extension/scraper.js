@@ -245,8 +245,40 @@
     return parseBrazilianPrice(fraction);
   }
 
+  function extractPricesFromAriaLabels(root) {
+    if (!root) return null;
+
+    let originalPrice = null;
+    let currentPrice = null;
+
+    root.querySelectorAll("[aria-label]").forEach((node) => {
+      const label = node.getAttribute("aria-label") || "";
+      if (!/antes|agora/i.test(label)) return;
+
+      const value = extractMoneyAmount(node);
+      if (value == null) return;
+
+      if (/antes/i.test(label)) originalPrice = value;
+      if (/agora/i.test(label)) currentPrice = value;
+    });
+
+    if (
+      originalPrice != null &&
+      currentPrice != null &&
+      originalPrice > currentPrice &&
+      originalPrice - currentPrice >= 0.5
+    ) {
+      return { price: originalPrice, promotionalPrice: currentPrice };
+    }
+
+    return null;
+  }
+
   function extractPrices(jsonLdProducts) {
     const priceRoot = findPriceRoot();
+    const ariaPrices = extractPricesFromAriaLabels(priceRoot);
+    if (ariaPrices) return ariaPrices;
+
     let currentPrice = null;
     let originalPrice = null;
 
@@ -255,6 +287,7 @@
         ".ui-pdp-price__second-line .andes-money-amount",
         ".ui-pdp-price__main .andes-money-amount",
         ".poly-price__current .andes-money-amount",
+        ".poly-price .andes-money-amount--cents-superscript",
         "[data-testid='price-part'] .andes-money-amount",
         ".andes-money-amount:not(.andes-money-amount--previous)",
       ];
@@ -727,12 +760,24 @@
 
     let prices = extractPrices(jsonLdProducts);
     if (prices.price == null && prices.promotionalPrice == null) {
-      const priceNodes = cardRoot.querySelectorAll(".andes-money-amount");
-      for (const node of priceNodes) {
-        const value = extractMoneyAmount(node);
-        if (value != null) {
-          prices = { price: value, promotionalPrice: null };
-          break;
+      const ariaPrices = extractPricesFromAriaLabels(cardRoot);
+      if (ariaPrices) {
+        prices = ariaPrices;
+      } else {
+        const priceNodes = cardRoot.querySelectorAll(".andes-money-amount");
+        for (const node of priceNodes) {
+          if (
+            node.classList.contains("andes-money-amount--previous") ||
+            isInstallmentPriceNode(node)
+          ) {
+            continue;
+          }
+
+          const value = extractMoneyAmount(node);
+          if (value != null) {
+            prices = { price: value, promotionalPrice: null };
+            break;
+          }
         }
       }
     }

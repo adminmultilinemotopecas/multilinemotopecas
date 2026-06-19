@@ -5,6 +5,7 @@ export {
   extractPriceFromJsonLd,
   extractPriceFromMetaTags,
   extractPriceFromSocialPage,
+  extractPricesFromSocialPage,
   extractPriceFromScripts,
   extractMercadoLivrePrice,
   normalizePrice,
