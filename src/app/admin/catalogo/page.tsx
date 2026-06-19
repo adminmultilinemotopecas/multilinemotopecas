@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
+import Image from "next/image";
 import {
   ExternalLink,
   Loader2,
@@ -11,9 +12,13 @@ import {
   CheckCircle2,
   Link2,
   Pencil,
+  Search,
+  X,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
 import { adminFetch } from "@/lib/admin/client";
 import { formatPrice } from "@/lib/utils";
 import {
@@ -22,7 +27,9 @@ import {
   type MlVerificationResult,
   type MlVerificationStatus,
 } from "@/lib/mercado-livre-verify";
-import type { Product } from "@/types/database";
+import type { Product, ProductImage } from "@/types/database";
+
+const PAGE_SIZE = 15;
 
 type CatalogProduct = Pick<
   Product,
@@ -42,6 +49,7 @@ type CatalogProduct = Pick<
   | "ml_verified_at"
   | "brand"
   | "category"
+  | "images"
 >;
 
 type VerificationMap = Record<string, MlVerificationResult>;
@@ -74,6 +82,12 @@ function formatCheckedAt(iso: string) {
   }).format(new Date(iso));
 }
 
+function getPrimaryImageUrl(images?: ProductImage[]): string | null {
+  if (!images?.length) return null;
+  const primary = images.find((img) => img.is_primary) ?? images[0];
+  return primary?.url ?? null;
+}
+
 export default function AdminCatalogPage() {
   const [products, setProducts] = useState<CatalogProduct[]>([]);
   const [loading, setLoading] = useState(true);
@@ -84,6 +98,8 @@ export default function AdminCatalogPage() {
   const [filter, setFilter] = useState<
     "all" | "site" | "with_link" | "issues" | "pending"
   >("all");
+  const [search, setSearch] = useState("");
+  const [page, setPage] = useState(1);
 
   const loadProducts = useCallback(async () => {
     const data = await adminFetch<CatalogProduct[]>("/api/admin/catalog");
@@ -95,24 +111,55 @@ export default function AdminCatalogPage() {
     loadProducts();
   }, [loadProducts]);
 
+  useEffect(() => {
+    setPage(1);
+  }, [filter, search]);
+
   const filteredProducts = useMemo(() => {
+    const query = search.trim().toLowerCase();
+
     return products.filter((product) => {
-      if (filter === "site") return product.status === "active";
-      if (filter === "with_link") return Boolean(product.mercado_livre_url);
-      if (filter === "issues") {
+      if (filter === "site") {
+        if (product.status !== "active") return false;
+      } else if (filter === "with_link") {
+        if (!product.mercado_livre_url) return false;
+      } else if (filter === "issues") {
         const v = verifications[product.id];
-        return (
+        const hasIssue =
           product.ml_verification_pending ||
           (v &&
             ["inactive", "not_found", "invalid_url", "error"].includes(
               v.status
-            ))
-        );
+            ));
+        if (!hasIssue) return false;
+      } else if (filter === "pending") {
+        if (!product.ml_verification_pending) return false;
       }
-      if (filter === "pending") return product.ml_verification_pending;
-      return true;
+
+      if (!query) return true;
+
+      const haystack = [
+        product.name,
+        product.sku,
+        product.internal_code,
+        product.brand?.name,
+        product.category?.name,
+        product.mercado_livre_id,
+      ]
+        .filter(Boolean)
+        .join(" ")
+        .toLowerCase();
+
+      return haystack.includes(query);
     });
-  }, [products, filter, verifications]);
+  }, [products, filter, verifications, search]);
+
+  const totalPages = Math.max(1, Math.ceil(filteredProducts.length / PAGE_SIZE));
+
+  const paginatedProducts = useMemo(() => {
+    const start = (page - 1) * PAGE_SIZE;
+    return filteredProducts.slice(start, start + PAGE_SIZE);
+  }, [filteredProducts, page]);
 
   const stats = useMemo(() => {
     const onSite = products.filter((p) => p.status === "active");
@@ -327,7 +374,7 @@ export default function AdminCatalogPage() {
         </div>
       )}
 
-      <div className="flex flex-wrap gap-2 mb-6">
+      <div className="flex flex-wrap gap-2 mb-4">
         {(
           [
             ["site", "No site"],
@@ -348,35 +395,84 @@ export default function AdminCatalogPage() {
         ))}
       </div>
 
+      <div className="rounded-xl border bg-muted/20 p-4 mb-6 space-y-3">
+        <div className="flex flex-wrap items-end gap-4">
+          <div className="space-y-1 flex-1 min-w-[240px] max-w-xl">
+            <Label htmlFor="catalog-search">Pesquisar produtos</Label>
+            <div className="relative">
+              <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+              <Input
+                id="catalog-search"
+                value={search}
+                onChange={(e) => setSearch(e.target.value)}
+                placeholder="Nome, SKU, marca, categoria ou ID ML..."
+                className="pl-9"
+              />
+            </div>
+          </div>
+          {search.trim().length > 0 && (
+            <Button type="button" variant="ghost" size="sm" onClick={() => setSearch("")}>
+              <X className="h-4 w-4" />
+              Limpar
+            </Button>
+          )}
+        </div>
+        <p className="text-sm text-muted-foreground">
+          {filteredProducts.length} produto(s) encontrado(s)
+        </p>
+      </div>
+
       {filteredProducts.length === 0 ? (
         <div className="text-center py-12 text-muted-foreground border rounded-xl">
           Nenhum produto encontrado para este filtro
         </div>
       ) : (
-        <div className="border rounded-xl overflow-hidden">
+        <div className="border rounded-xl overflow-hidden bg-background">
           <div className="overflow-x-auto">
-            <table className="w-full text-sm">
+            <table className="w-full text-sm" style={{ minWidth: "1300px" }}>
               <thead className="bg-muted/50">
                 <tr>
-                  <th className="px-4 py-3 text-left font-medium">Produto</th>
+                  <th className="px-4 py-3 text-left font-medium w-20">Foto</th>
+                  <th className="px-4 py-3 text-left font-medium min-w-[220px]">Produto</th>
                   <th className="px-4 py-3 text-left font-medium">SKU</th>
                   <th className="px-4 py-3 text-left font-medium">Marca</th>
                   <th className="px-4 py-3 text-left font-medium">Preço</th>
                   <th className="px-4 py-3 text-left font-medium">Preço Promocional</th>
                   <th className="px-4 py-3 text-left font-medium">Status site</th>
                   <th className="px-4 py-3 text-left font-medium">Link ML</th>
-                  <th className="px-4 py-3 text-left font-medium">Verificação</th>
-                  <th className="px-4 py-3 text-right font-medium">Ações</th>
+                  <th className="px-4 py-3 text-left font-medium min-w-[140px]">Verificação</th>
+                  <th className="px-4 py-3 text-right font-medium w-40 sticky right-0 bg-muted/50">
+                    Ações
+                  </th>
                 </tr>
               </thead>
               <tbody>
-                {filteredProducts.map((product) => {
+                {paginatedProducts.map((product) => {
                   const verification = verifications[product.id];
                   const isVerifying = verifyingIds.has(product.id);
+                  const imageUrl = getPrimaryImageUrl(product.images);
 
                   return (
                     <tr key={product.id} className="border-t hover:bg-muted/30">
-                      <td className="px-4 py-3">
+                      <td className="px-4 py-3 align-middle">
+                        <div className="relative h-14 w-14 rounded-lg overflow-hidden border bg-muted shrink-0">
+                          {imageUrl ? (
+                            <Image
+                              src={imageUrl}
+                              alt={product.name}
+                              fill
+                              sizes="56px"
+                              className="object-cover"
+                              unoptimized
+                            />
+                          ) : (
+                            <div className="flex h-full w-full items-center justify-center text-[10px] text-muted-foreground text-center px-1">
+                              Sem foto
+                            </div>
+                          )}
+                        </div>
+                      </td>
+                      <td className="px-4 py-3 align-middle">
                         <div className="font-medium">{product.name}</div>
                         {product.ml_verification_pending && (
                           <Badge variant="warning" className="mt-1">
@@ -394,19 +490,19 @@ export default function AdminCatalogPage() {
                           </div>
                         )}
                       </td>
-                      <td className="px-4 py-3 text-muted-foreground">
+                      <td className="px-4 py-3 text-muted-foreground align-middle">
                         {product.sku}
                       </td>
-                      <td className="px-4 py-3">{product.brand?.name || "-"}</td>
-                      <td className="px-4 py-3 whitespace-nowrap">
+                      <td className="px-4 py-3 align-middle">{product.brand?.name || "-"}</td>
+                      <td className="px-4 py-3 whitespace-nowrap align-middle">
                         {formatPrice(product.price)}
                       </td>
-                      <td className="px-4 py-3 whitespace-nowrap">
+                      <td className="px-4 py-3 whitespace-nowrap align-middle">
                         {product.promotional_price != null
                           ? formatPrice(product.promotional_price)
                           : "-"}
                       </td>
-                      <td className="px-4 py-3">
+                      <td className="px-4 py-3 align-middle">
                         <Badge
                           variant={
                             product.status === "active" ? "success" : "secondary"
@@ -434,7 +530,7 @@ export default function AdminCatalogPage() {
                           </Badge>
                         </div>
                       </td>
-                      <td className="px-4 py-3 max-w-[180px]">
+                      <td className="px-4 py-3 max-w-[180px] align-middle">
                         {product.mercado_livre_url ? (
                           <a
                             href={product.mercado_livre_url}
@@ -450,7 +546,7 @@ export default function AdminCatalogPage() {
                           <span className="text-muted-foreground">Sem link</span>
                         )}
                       </td>
-                      <td className="px-4 py-3 min-w-[140px]">
+                      <td className="px-4 py-3 min-w-[140px] align-middle">
                         {verification ? (
                           <div className="space-y-1">
                             <Badge
@@ -484,7 +580,7 @@ export default function AdminCatalogPage() {
                           </span>
                         )}
                       </td>
-                      <td className="px-4 py-3">
+                      <td className="px-4 py-3 align-middle sticky right-0 bg-background">
                         <div className="flex justify-end gap-1">
                           <Button
                             variant="outline"
@@ -529,6 +625,39 @@ export default function AdminCatalogPage() {
               </tbody>
             </table>
           </div>
+
+          {filteredProducts.length > PAGE_SIZE && (
+            <div className="flex flex-wrap items-center justify-between gap-3 border-t px-4 py-3 bg-muted/20">
+              <p className="text-sm text-muted-foreground">
+                Exibindo {(page - 1) * PAGE_SIZE + 1}–
+                {Math.min(page * PAGE_SIZE, filteredProducts.length)} de{" "}
+                {filteredProducts.length}
+              </p>
+              <div className="flex items-center gap-2">
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  disabled={page <= 1}
+                  onClick={() => setPage((p) => p - 1)}
+                >
+                  Anterior
+                </Button>
+                <span className="text-sm text-muted-foreground px-2">
+                  Página {page} de {totalPages}
+                </span>
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  disabled={page >= totalPages}
+                  onClick={() => setPage((p) => p + 1)}
+                >
+                  Próxima
+                </Button>
+              </div>
+            </div>
+          )}
         </div>
       )}
     </div>
