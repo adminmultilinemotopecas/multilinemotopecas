@@ -1,6 +1,10 @@
 const DEFAULT_API_BASE = "https://multilinemotopecas.com.br";
 const SYNC_DELAY_MS = 2500;
 const ML_URL_PATTERN = /mercadolivre|mercadolibre|meli\.la/i;
+const ML_LOGIN_URL =
+  "https://www.mercadolivre.com/jms/mlb/lgz/login?platform_id=ml&go";
+const ML_LOGIN_WARMUP_MS = 800;
+const ML_PRODUCT_LOAD_MS = 1200;
 
 function sleep(ms) {
   return new Promise((resolve) => setTimeout(resolve, ms));
@@ -124,17 +128,54 @@ function waitForTabComplete(tabId, timeoutMs = 45000) {
   });
 }
 
-async function fetchMlPriceInBrowser(sourceUrl, active = false) {
-  const tab = await chrome.tabs.create({ url: sourceUrl, active });
+async function navigateTabAndWait(tabId, url) {
+  await chrome.tabs.update(tabId, { url });
+  await waitForTabComplete(tabId);
+}
+
+async function warmUpMlLoginSession(tabId) {
+  await navigateTabAndWait(tabId, ML_LOGIN_URL);
+  await sleep(ML_LOGIN_WARMUP_MS);
+}
+
+async function fetchMlPriceInBrowser(sourceUrl, active = false, options = {}) {
+  const existingTabId = options.existingTabId ?? null;
+  const skipLogin = options.skipLogin === true;
+
+  let tabId = existingTabId;
+  let shouldCloseTab = false;
+
+  if (!tabId) {
+    const tab = await chrome.tabs.create({
+      url: skipLogin ? sourceUrl : ML_LOGIN_URL,
+      active,
+    });
+    tabId = tab.id;
+    shouldCloseTab = true;
+
+    await waitForTabComplete(tabId);
+
+    if (!skipLogin) {
+      await sleep(ML_LOGIN_WARMUP_MS);
+      await navigateTabAndWait(tabId, sourceUrl);
+    }
+  } else if (!skipLogin) {
+    await warmUpMlLoginSession(tabId);
+    await navigateTabAndWait(tabId, sourceUrl);
+  } else {
+    await navigateTabAndWait(tabId, sourceUrl);
+  }
+
   try {
-    await waitForTabComplete(tab.id);
-    await sleep(1200);
-    return await scrapePriceFromTab(tab.id);
+    await sleep(ML_PRODUCT_LOAD_MS);
+    return await scrapePriceFromTab(tabId);
   } finally {
-    try {
-      await chrome.tabs.remove(tab.id);
-    } catch {
-      // tab may already be closed
+    if (shouldCloseTab) {
+      try {
+        await chrome.tabs.remove(tabId);
+      } catch {
+        // tab may already be closed
+      }
     }
   }
 }
@@ -211,23 +252,50 @@ async function syncAllProducts(onProgress) {
     lastError: null,
   };
 
-  for (const product of products) {
-    stats.processed += 1;
-    stats.currentProductName = product.name;
+  if (products.length === 0) {
     onProgress?.({ ...stats });
+    return stats;
+  }
 
-    try {
-      await syncProductByBrowser(product.id, product.sourceUrl);
-      stats.succeeded += 1;
-      stats.lastError = null;
-    } catch (error) {
-      stats.failed += 1;
-      stats.lastError = error instanceof Error ? error.message : "Falha ao sincronizar";
+  const sessionTab = await chrome.tabs.create({ url: ML_LOGIN_URL, active: false });
+
+  try {
+    await waitForTabComplete(sessionTab.id);
+    await sleep(ML_LOGIN_WARMUP_MS);
+
+    for (const product of products) {
+      stats.processed += 1;
+      stats.currentProductName = product.name;
       onProgress?.({ ...stats });
-    }
 
-    if (stats.processed < stats.total) {
-      await sleep(SYNC_DELAY_MS);
+      try {
+        const scrape = await fetchMlPriceInBrowser(product.sourceUrl, false, {
+          existingTabId: sessionTab.id,
+          skipLogin: true,
+        });
+
+        if (!scrape?.ok || scrape.price == null) {
+          throw new Error(scrape?.error || "Preço não encontrado na página do Mercado Livre.");
+        }
+
+        await syncProductOnServer(product.id, scrape);
+        stats.succeeded += 1;
+        stats.lastError = null;
+      } catch (error) {
+        stats.failed += 1;
+        stats.lastError = error instanceof Error ? error.message : "Falha ao sincronizar";
+        onProgress?.({ ...stats });
+      }
+
+      if (stats.processed < stats.total) {
+        await sleep(SYNC_DELAY_MS);
+      }
+    }
+  } finally {
+    try {
+      await chrome.tabs.remove(sessionTab.id);
+    } catch {
+      // tab may already be closed
     }
   }
 
