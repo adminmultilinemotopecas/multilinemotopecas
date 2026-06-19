@@ -4,6 +4,7 @@ export type MlVerificationStatus =
   | "not_found"
   | "no_url"
   | "invalid_url"
+  | "blocked"
   | "error"
   | "unknown";
 
@@ -19,6 +20,16 @@ export interface MlVerificationResult {
 
 const ML_LINK_HOST_PATTERN =
   /(?:^|\.)mercadolivre\.com(?:\.br)?$|(?:^|\.)mercadolibre\.com$|^meli\.la$|^me2\.do$|^merca\.do$/i;
+
+const BLOCKED_HTML_PATTERNS = [
+  /captcha/i,
+  /account-verification/i,
+  /robot/i,
+  /access denied/i,
+  /cf-browser-verification/i,
+  /validate\s+your\s+identity/i,
+  /verifique\s+que\s+voc[eê]\s+n[aã]o\s+[eé]\s+um\s+rob[oô]/i,
+];
 
 const INACTIVE_HTML_PATTERNS = [
   /publica[cç][aã]o\s+pausada/i,
@@ -325,6 +336,10 @@ function hasActiveProductMarkup(html: string): boolean {
   );
 }
 
+function isBlockedPage(html: string, status: number): boolean {
+  return status === 403 || BLOCKED_HTML_PATTERNS.some((pattern) => pattern.test(html));
+}
+
 function isInactiveListingPage(html: string): boolean {
   if (hasActiveProductMarkup(html)) {
     return /"item_status"\s*:\s*"(?:paused|closed)"/i.test(html);
@@ -345,7 +360,11 @@ function isNotFoundPage(html: string, status: number): boolean {
 export async function verifyMercadoLivreListing(
   url: string | null | undefined,
   productName: string,
-  storedId?: string | null
+  storedId?: string | null,
+  options?: {
+    cookieHeader?: string | null;
+    userAgent?: string | null;
+  }
 ): Promise<MlVerificationResult> {
   const checkedAt = new Date().toISOString();
 
@@ -381,8 +400,16 @@ export async function verifyMercadoLivreListing(
     extractMercadoLivreId(url, storedId) ?? extractMercadoLivreId(parsedUrl.href, storedId);
 
   try {
+    const headers: Record<string, string> = { ...FETCH_HEADERS };
+    if (options?.cookieHeader) {
+      headers.Cookie = options.cookieHeader;
+    }
+    if (options?.userAgent) {
+      headers["User-Agent"] = options.userAgent;
+    }
+
     const response = await fetch(url, {
-      headers: FETCH_HEADERS,
+      headers,
       cache: "no-store",
       redirect: "follow",
       signal: AbortSignal.timeout(20000),
@@ -390,6 +417,16 @@ export async function verifyMercadoLivreListing(
 
     const html = await response.text();
     const finalUrl = response.url;
+
+    if (isBlockedPage(html, response.status)) {
+      return {
+        status: "blocked",
+        message:
+          "Mercado Livre exigiu verificação (captcha). Abra o link no navegador, conclua a validação e tente novamente.",
+        itemId: itemId ?? undefined,
+        checkedAt,
+      };
+    }
 
     itemId =
       extractMercadoLivreId(finalUrl, storedId) ??
@@ -514,6 +551,8 @@ export function getVerificationBadgeVariant(
     case "no_url":
     case "invalid_url":
       return "warning";
+    case "blocked":
+      return "warning";
     case "error":
     case "unknown":
     default:
@@ -533,6 +572,8 @@ export function getVerificationLabel(status: MlVerificationStatus): string {
       return "Sem link";
     case "invalid_url":
       return "Link inválido";
+    case "blocked":
+      return "Verificação necessária";
     case "error":
       return "Erro";
     case "unknown":

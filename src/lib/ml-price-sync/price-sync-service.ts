@@ -1,11 +1,13 @@
 import { prisma } from "@/lib/prisma";
 import { decimalToNumber } from "@/lib/db/mappers";
+import { getMlBrowserSession } from "@/lib/ml-price-sync/ml-browser-session";
 import { resolveProductSyncUrl } from "@/lib/ml-price-sync/url-validator";
 import { scrapeMercadoLivrePrice } from "@/lib/ml-price-sync/scrape-prices";
 import type {
   PriceSyncApplyResult,
   PriceSyncResultStatus,
   PriceScrapeEvidence,
+  PriceScrapeResult,
   ProductSyncCandidate,
 } from "@/lib/ml-price-sync/types";
 import type { Prisma, price_sync_status } from "@prisma/client";
@@ -62,8 +64,12 @@ export function toProductSyncCandidate(product: {
 
 export async function syncProductPrice(input: {
   productId: string;
+  adminUserId?: string;
   triggerSource?: "manual" | "cron";
   forceUpdate?: boolean;
+  manualPrice?: number;
+  manualPromotionalPrice?: number | null;
+  afterBrowserValidation?: boolean;
 }): Promise<PriceSyncApplyResult> {
   const product = await prisma.products.findUnique({
     where: { id: input.productId },
@@ -157,11 +163,60 @@ export async function syncProductPrice(input: {
     };
   }
 
-  const scrape = await scrapeMercadoLivrePrice({
-    sourceUrl,
-    expectedProductName: candidate.name,
-    expectedItemId: candidate.mercado_livre_id,
-  });
+  const checkedAt = new Date().toISOString();
+  const browserSession =
+    input.adminUserId && input.triggerSource !== "cron"
+      ? getMlBrowserSession(input.adminUserId)
+      : null;
+
+  let scrape: PriceScrapeResult =
+    input.manualPrice != null && Number.isFinite(input.manualPrice)
+      ? {
+          success: true,
+          price: Math.round(input.manualPrice * 100) / 100,
+          promotionalPrice:
+            input.manualPromotionalPrice != null &&
+            Number.isFinite(input.manualPromotionalPrice)
+              ? Math.round(input.manualPromotionalPrice * 100) / 100
+              : null,
+          sourceUrl,
+          checkedAt,
+          status: "success" as const,
+          confidenceScore: 1,
+          evidence: {
+            strategies: ["manual_browser_validation"],
+            finalUrl: sourceUrl,
+          },
+        }
+      : browserSession?.scrapedPrice != null &&
+          input.triggerSource !== "cron" &&
+          (input.manualPrice == null || !Number.isFinite(input.manualPrice))
+        ? {
+            success: true,
+            price: browserSession.scrapedPrice,
+            promotionalPrice: browserSession.scrapedPromotionalPrice,
+            sourceUrl: browserSession.sourceUrl || sourceUrl,
+            checkedAt,
+            status: "success" as const,
+            confidenceScore: 0.95,
+            evidence: {
+              strategies: ["extension_browser_scrape", "browser_session_cookies"],
+              finalUrl: browserSession.sourceUrl || sourceUrl,
+              pageTitle: browserSession.pageTitle,
+            },
+            pageTitle: browserSession.pageTitle,
+          }
+        : await scrapeMercadoLivrePrice({
+            sourceUrl,
+            expectedProductName: candidate.name,
+            expectedItemId: candidate.mercado_livre_id,
+            browserSession: browserSession
+              ? {
+                  cookieHeader: browserSession.cookieHeader,
+                  userAgent: browserSession.userAgent,
+                }
+              : null,
+          });
 
   let finalStatus: PriceSyncResultStatus = scrape.status;
   let message = scrape.error ?? "Sincronização concluída.";
@@ -190,7 +245,13 @@ export async function syncProductPrice(input: {
       newPromotionalPrice = scrape.promotionalPrice;
       updated = true;
       finalStatus = "success";
-      message = "Preço sincronizado com sucesso.";
+      message = scrape.evidence.strategies.includes("manual_browser_validation")
+        ? "Preço aplicado após validação manual no Mercado Livre."
+        : scrape.evidence.strategies.includes("extension_browser_scrape")
+          ? "Preço sincronizado com sessão validada no navegador."
+          : browserSession?.cookieHeader
+            ? "Preço sincronizado usando sessão do Mercado Livre."
+            : "Preço sincronizado com sucesso.";
     }
   } else if (!scrape.success) {
     finalStatus = scrape.status === "success" ? "failed" : scrape.status;

@@ -3,6 +3,7 @@ import { withAdminAuth } from "@/lib/admin/api-auth";
 import { mapProduct } from "@/lib/db/mappers";
 import { deleteProduct, getAdminProductById, saveProduct } from "@/lib/db/products-admin";
 import type { SaveProductInput } from "@/lib/db/products-admin";
+import { MlValidationError } from "@/lib/ml-url-validation";
 
 interface RouteContext {
   params: Promise<{ id: string }>;
@@ -31,12 +32,22 @@ export async function GET(_request: NextRequest, context: RouteContext) {
 export async function PUT(request: NextRequest, context: RouteContext) {
   const { id } = await context.params;
 
-  return withAdminAuth(async () => {
+  return withAdminAuth(async (userId) => {
     try {
       const body = (await request.json()) as SaveProductInput;
-      const result = await saveProduct(body, id);
+      const result = await saveProduct(body, id, userId);
       return NextResponse.json(result);
     } catch (error) {
+      if (error instanceof MlValidationError) {
+        return NextResponse.json(
+          {
+            error: error.message,
+            code: error.code,
+            sourceUrl: error.sourceUrl,
+          },
+          { status: 409 }
+        );
+      }
       const message = error instanceof Error ? error.message : "Erro ao salvar produto";
       return NextResponse.json({ error: message }, { status: 400 });
     }

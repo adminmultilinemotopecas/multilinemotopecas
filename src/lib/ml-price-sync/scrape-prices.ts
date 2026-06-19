@@ -317,6 +317,10 @@ export async function scrapeMercadoLivrePrice(input: {
   sourceUrl: string;
   expectedProductName: string;
   expectedItemId?: string | null;
+  browserSession?: {
+    cookieHeader: string;
+    userAgent?: string | null;
+  } | null;
 }): Promise<PriceScrapeResult> {
   const checkedAt = new Date().toISOString();
   const sourceUrl = normalizeSyncUrl(input.sourceUrl);
@@ -354,9 +358,25 @@ export async function scrapeMercadoLivrePrice(input: {
   }
 
   let response: Response;
+  const fetchHeaders: Record<string, string> = {
+    ...FETCH_HEADERS,
+  };
+
+  if (input.browserSession?.cookieHeader) {
+    fetchHeaders.Cookie = input.browserSession.cookieHeader;
+  }
+
+  if (input.browserSession?.userAgent) {
+    fetchHeaders["User-Agent"] = input.browserSession.userAgent;
+  }
+
+  if (input.browserSession?.cookieHeader) {
+    evidence.strategies.push("browser_session_cookies");
+  }
+
   try {
     response = await fetch(sourceUrl, {
-      headers: FETCH_HEADERS,
+      headers: fetchHeaders,
       cache: "no-store",
       redirect: "follow",
       signal: AbortSignal.timeout(25_000),

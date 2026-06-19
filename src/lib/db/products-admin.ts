@@ -1,6 +1,11 @@
 import { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import { mapProduct, productInclude } from "@/lib/db/mappers";
+import {
+  MlValidationError,
+  validateAndNormalizeMlUrls,
+} from "@/lib/ml-url-validation";
+import { getMlBrowserSession } from "@/lib/ml-price-sync/ml-browser-session";
 import { slugify } from "@/lib/utils";
 import type { ProductStatus, ListingStatus } from "@/types/database";
 
@@ -48,6 +53,7 @@ export interface SaveProductInput {
   is_recommended?: boolean;
   images?: ProductImageInput[];
   modelCompat?: ModelCompatibilityInput[];
+  skip_ml_network_verify?: boolean;
 }
 
 function buildProductData(input: SaveProductInput, slug: string, isNew: boolean) {
@@ -118,17 +124,66 @@ export async function getAdminProductById(id: string) {
   return record;
 }
 
-export async function saveProduct(input: SaveProductInput, productId?: string) {
+export async function saveProduct(
+  input: SaveProductInput,
+  productId?: string,
+  adminUserId?: string
+) {
   const slug = slugify(input.name);
+
+  const existing = productId
+    ? await prisma.products.findUnique({
+        where: { id: productId },
+        select: {
+          mercado_livre_url: true,
+          ml_source_url: true,
+          mercado_livre_id: true,
+        },
+      })
+    : null;
+
+  const browserSession =
+    adminUserId && !input.skip_ml_network_verify
+      ? getMlBrowserSession(adminUserId)
+      : null;
+
+  const mlValidation = await validateAndNormalizeMlUrls({
+    name: input.name,
+    mercado_livre_url: input.mercado_livre_url,
+    ml_source_url: input.ml_source_url,
+    mercado_livre_id: input.mercado_livre_id,
+    existing,
+    skipNetworkVerify: input.skip_ml_network_verify === true,
+    browserSession,
+  });
+
+  if (!mlValidation.ok) {
+    if (mlValidation.blocked) {
+      throw new MlValidationError(
+        "ml_blocked",
+        mlValidation.error ??
+          "Mercado Livre exigiu verificação. Conclua o captcha no navegador e salve novamente.",
+        mlValidation.sourceUrl ?? mlValidation.normalized.ml_source_url
+      );
+    }
+    throw new Error(mlValidation.error ?? "URL do Mercado Livre inválida.");
+  }
+
+  const enrichedInput: SaveProductInput = {
+    ...input,
+    mercado_livre_url: mlValidation.normalized.mercado_livre_url,
+    ml_source_url: mlValidation.normalized.ml_source_url,
+    mercado_livre_id: mlValidation.normalized.mercado_livre_id,
+  };
 
   try {
     const product = productId
       ? await prisma.products.update({
           where: { id: productId },
-          data: buildProductData(input, slug, false),
+          data: buildProductData(enrichedInput, slug, false),
         })
       : await prisma.products.create({
-          data: buildProductData(input, slug, true),
+          data: buildProductData(enrichedInput, slug, true),
         });
 
     const validImages = (input.images ?? [])

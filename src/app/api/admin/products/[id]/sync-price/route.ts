@@ -9,16 +9,23 @@ interface RouteContext {
 export async function POST(request: NextRequest, context: RouteContext) {
   const { id } = await context.params;
 
-  return withAdminAuth(async () => {
+  return withAdminAuth(async (userId) => {
     try {
       const body = (await request.json().catch(() => ({}))) as {
         forceUpdate?: boolean;
+        manualPrice?: number;
+        manualPromotionalPrice?: number | null;
+        afterBrowserValidation?: boolean;
       };
 
       const result = await syncProductPrice({
         productId: id,
+        adminUserId: userId,
         triggerSource: "manual",
         forceUpdate: body.forceUpdate === true,
+        manualPrice: body.manualPrice,
+        manualPromotionalPrice: body.manualPromotionalPrice,
+        afterBrowserValidation: body.afterBrowserValidation === true,
       });
 
       return NextResponse.json({
@@ -34,6 +41,7 @@ export async function POST(request: NextRequest, context: RouteContext) {
         sourceUrl: result.scrape.sourceUrl,
         checkedAt: result.scrape.checkedAt,
         evidence: result.scrape.evidence,
+        requiresBrowserValidation: result.scrape.status === "blocked",
       });
     } catch (error) {
       const message =

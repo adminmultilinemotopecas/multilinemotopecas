@@ -23,6 +23,7 @@ import {
 import type { Product, Brand, Category, MotorcycleModel, ProductImage } from "@/types/database";
 import { ArrowDown, ArrowUp, ImagePlus, Loader2, Save, Trash2 } from "lucide-react";
 import { ProductPriceSyncButton } from "@/components/admin/price-sync-controls";
+import { MlBrowserValidationDialog } from "@/components/admin/ml-browser-validation-dialog";
 
 interface ProductFormProps {
   product?: Product;
@@ -143,6 +144,13 @@ export function ProductForm({
   const [imageFields, setImageFields] = useState<ImageField[]>(
     buildInitialImages(initialImages.length > 0 ? initialImages : product?.images)
   );
+  const [mlValidationDialog, setMlValidationDialog] = useState<{
+    open: boolean;
+    sourceUrl: string;
+  } | null>(null);
+  const [pendingPayload, setPendingPayload] = useState<Record<string, unknown> | null>(
+    null
+  );
 
   useEffect(() => {
     if (!isNewProduct || suggestedInternalCode) return;
@@ -188,6 +196,23 @@ export function ProductForm({
       [next[index], next[targetIndex]] = [next[targetIndex], next[index]];
       return next;
     });
+  }
+
+  async function submitProduct(
+    payload: Record<string, unknown>,
+    options?: { skipMlNetworkVerify?: boolean }
+  ) {
+    const url = product ? `/api/admin/products/${product.id}` : "/api/admin/products";
+    await adminFetch(url, {
+      method: product ? "PUT" : "POST",
+      body: JSON.stringify({
+        ...payload,
+        skip_ml_network_verify: options?.skipMlNetworkVerify === true,
+      }),
+    });
+
+    router.push("/admin/produtos");
+    router.refresh();
   }
 
   async function handleSubmit(e: React.FormEvent) {
@@ -250,14 +275,37 @@ export function ProductForm({
     };
 
     try {
-      const url = product ? `/api/admin/products/${product.id}` : "/api/admin/products";
-      await adminFetch(url, {
-        method: product ? "PUT" : "POST",
-        body: JSON.stringify(payload),
-      });
+      await submitProduct(payload);
+    } catch (err) {
+      if (err instanceof AdminApiError && err.code === "ml_blocked") {
+        setPendingPayload(payload);
+        setMlValidationDialog({
+          open: true,
+          sourceUrl:
+            err.sourceUrl ||
+            form.ml_source_url.trim() ||
+            form.mercado_livre_url.trim(),
+        });
+        setError(
+          "Mercado Livre exigiu verificação. Conclua o captcha no popup e salve novamente."
+        );
+      } else {
+        const message = err instanceof AdminApiError ? err.message : "Erro ao salvar produto";
+        setError(formatApiError(message));
+      }
+    } finally {
+      setLoading(false);
+    }
+  }
 
-      router.push("/admin/produtos");
-      router.refresh();
+  async function handleSaveAfterMlValidation() {
+    if (!pendingPayload) return;
+    setLoading(true);
+    setError("");
+    try {
+      await submitProduct(pendingPayload);
+      setMlValidationDialog(null);
+      setPendingPayload(null);
     } catch (err) {
       const message = err instanceof AdminApiError ? err.message : "Erro ao salvar produto";
       setError(formatApiError(message));
@@ -269,6 +317,7 @@ export function ProductForm({
   const subcategories = categories.flatMap((c) => c.children || []);
 
   return (
+    <>
     <form onSubmit={handleSubmit} className="space-y-6">
       {error && (
         <div className="rounded-lg border border-destructive/50 bg-destructive/10 px-4 py-3 text-sm text-destructive">
@@ -773,5 +822,24 @@ export function ProductForm({
         </Button>
       </div>
     </form>
+
+    {mlValidationDialog && (
+      <MlBrowserValidationDialog
+        open={mlValidationDialog.open}
+        onOpenChange={(open) => {
+          if (!open) setMlValidationDialog(null);
+        }}
+        sourceUrl={mlValidationDialog.sourceUrl}
+        productName={form.name}
+        title="Validar link do Mercado Livre"
+        description="O Mercado Livre pediu verificação ao salvar. Abra a página, conclua login/captcha e feche a aba — a extensão captura cookies e sessão para continuar o salvamento."
+        confirmLabel="Concluí validação — salvar produto"
+        showManualPrice={false}
+        loading={loading}
+        autoContinueOnSession
+        onRetrySync={handleSaveAfterMlValidation}
+      />
+    )}
+    </>
   );
 }

@@ -723,4 +723,28 @@
   }
 
   globalScope.scrapeMercadoLivreProduct = scrapeMercadoLivreProduct;
+
+  if (typeof chrome !== "undefined" && chrome.runtime?.onMessage) {
+    chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
+      if (message?.type !== "SCRAPE_ML_PRICE") return;
+
+      try {
+        const data = scrapeMercadoLivreProduct();
+        sendResponse({
+          ok: true,
+          price: data.price,
+          promotionalPrice: data.promotionalPrice,
+          sourcePageUrl: data.sourcePageUrl,
+          pageTitle: data.name,
+        });
+      } catch (error) {
+        sendResponse({
+          ok: false,
+          error: error instanceof Error ? error.message : "Falha ao ler preço.",
+        });
+      }
+
+      return true;
+    });
+  }
 })(typeof window !== "undefined" ? window : globalThis);
