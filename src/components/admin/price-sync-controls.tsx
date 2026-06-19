@@ -227,7 +227,7 @@ export function ProductPriceSyncButton({
           sourceUrl={validationDialog.sourceUrl}
           productName={validationDialog.productName}
           loading={loading}
-          autoContinueOnPopupClose={false}
+          autoStartOnOpen
           onRetrySync={handleRetryAfterValidation}
           onApplyManualPrice={handleApplyManualPrice}
         />

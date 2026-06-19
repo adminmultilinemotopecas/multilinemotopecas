@@ -836,7 +836,7 @@ export function ProductForm({
         confirmLabel="Concluí validação — salvar produto"
         showManualPrice={false}
         loading={loading}
-        autoContinueOnPopupClose
+        autoStartOnOpen
         onRetrySync={handleSaveAfterMlValidation}
       />
     )}

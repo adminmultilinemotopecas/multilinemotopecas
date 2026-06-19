@@ -16,6 +16,8 @@ export interface MultilineMlBridge {
       hasCookies?: boolean;
       error?: string | null;
       persisted?: boolean;
+      scrapedPrice?: number | null;
+      scrapedPromotionalPrice?: number | null;
     }) => void
   ): () => void;
 }

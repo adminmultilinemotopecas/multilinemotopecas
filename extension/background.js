@@ -289,6 +289,8 @@ async function captureAndPersistSession(tabId, session) {
     sourceUrl: payload.sourceUrl || session.sourceUrl,
     hasScrapedPrice: payload.scrapedPrice != null,
     hasCookies: true,
+    scrapedPrice: payload.scrapedPrice,
+    scrapedPromotionalPrice: payload.scrapedPromotionalPrice,
   };
 
   await persistSessionViaAdminPage(session.adminOrigin, payload, notifyDetail);
@@ -299,6 +301,71 @@ async function captureAndPersistSession(tabId, session) {
   }
 
   return { scrape, cookieCount: cookies.length };
+}
+
+async function notifyScrapeResult(adminOrigin, notifyDetail) {
+  const adminTabs = await findAdminTabs(adminOrigin);
+  if (adminTabs.length === 0) {
+    throw new Error(
+      "Aba do admin não encontrada. Mantenha o painel admin aberto e recarregue a página."
+    );
+  }
+
+  let lastError = "Não foi possível enviar preço ao admin.";
+
+  for (const tab of adminTabs) {
+    await ensureAdminBridge(tab.id);
+    try {
+      const response = await chrome.tabs.sendMessage(tab.id, {
+        type: "ML_SCRAPE_RESULT",
+        notifyDetail,
+      });
+      if (response?.ok) return response;
+      lastError = response?.error || lastError;
+    } catch (error) {
+      lastError = error instanceof Error ? error.message : lastError;
+    }
+  }
+
+  throw new Error(lastError);
+}
+
+async function closeValidationTab(tabId) {
+  try {
+    await chrome.tabs.remove(tabId);
+  } catch {
+    // tab may already be closed
+  }
+}
+
+async function tryAutoCompleteValidation(tabId, session) {
+  if (session.persisted || session.finalizing) return;
+
+  const scrape = session.lastScrape;
+  if (!scrape?.ok || scrape.price == null) return;
+
+  session.finalizing = true;
+  await setValidationSession(tabId, session);
+
+  const notifyDetail = {
+    sourceUrl: scrape.sourcePageUrl || session.sourceUrl,
+    hasScrapedPrice: true,
+    hasCookies: false,
+    scrapedPrice: scrape.price,
+    scrapedPromotionalPrice: scrape.promotionalPrice ?? null,
+    persisted: true,
+  };
+
+  try {
+    await notifyScrapeResult(session.adminOrigin, notifyDetail);
+    session.persisted = true;
+    await closeValidationTab(tabId);
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "Falha ao capturar preço";
+    await notifyCaptureError(session, message);
+  } finally {
+    await deleteValidationSession(tabId);
+  }
 }
 
 async function notifyCaptureError(session, message) {
@@ -365,6 +432,14 @@ async function handleTabUpdated(tabId, changeInfo, tab) {
 
   try {
     const scrape = await scrapePriceFromTab(tabId);
+    if (scrape?.ok && scrape.price != null) {
+      session.lastScrape = scrape;
+      session.sourceUrl = scrape.sourcePageUrl || session.sourceUrl;
+      await setValidationSession(tabId, session);
+      void tryAutoCompleteValidation(tabId, session);
+      return;
+    }
+
     if (scrape?.ok) {
       session.lastScrape = scrape;
       session.sourceUrl = scrape.sourcePageUrl || session.sourceUrl;
@@ -459,12 +534,6 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
 
 chrome.tabs.onUpdated.addListener((tabId, changeInfo, tab) => {
   void handleTabUpdated(tabId, changeInfo, tab);
-});
-
-chrome.tabs.onActivated.addListener((activeInfo) => {
-  const previousTabId = activeInfo.previousTabId;
-  if (!previousTabId) return;
-  void finalizeValidationTab(previousTabId, "activated-away");
 });
 
 chrome.tabs.onRemoved.addListener((tabId) => {

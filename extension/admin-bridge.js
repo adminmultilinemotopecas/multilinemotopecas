@@ -74,6 +74,15 @@
       return true;
     }
 
+    if (message.type === "ML_SCRAPE_RESULT") {
+      dispatchSessionEvent({
+        ...(message.notifyDetail || {}),
+        persisted: true,
+      });
+      sendResponse({ ok: true });
+      return false;
+    }
+
     if (message.type === "ML_SESSION_CAPTURED") {
       dispatchSessionEvent({
         sourceUrl: message.sourceUrl || null,

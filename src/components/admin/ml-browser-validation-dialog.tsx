@@ -5,6 +5,12 @@ import { ExternalLink, Loader2, ShieldAlert, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import {
+  getAdminOrigin,
+  getMlExtensionBridge,
+  subscribeMlExtensionBridge,
+  waitForMlExtensionBridge,
+} from "@/lib/admin/ml-extension-client";
 
 export interface MlBrowserValidationDialogProps {
   open: boolean;
@@ -16,8 +22,8 @@ export interface MlBrowserValidationDialogProps {
   confirmLabel?: string;
   showManualPrice?: boolean;
   loading?: boolean;
-  /** Ao fechar o popup do ML, chama onRetrySync automaticamente. */
-  autoContinueOnPopupClose?: boolean;
+  /** Abre aba do ML automaticamente ao exibir o dialogo. */
+  autoStartOnOpen?: boolean;
   onRetrySync: () => Promise<void>;
   onApplyManualPrice?: (input: {
     price: number;
@@ -33,116 +39,184 @@ export function MlBrowserValidationDialog({
   sourceUrl,
   productName,
   title = "Validação do Mercado Livre necessária",
-  description = "O Mercado Livre bloqueou o acesso automático. Abra a página do anúncio, faça login ou conclua o captcha. Depois feche a janela e continue abaixo.",
+  description = "O Mercado Livre bloqueou a leitura interna. Uma aba será aberta no seu navegador para ler o preço — conclua o captcha se aparecer e aguarde.",
   confirmLabel = "Tentar sincronizar novamente",
   showManualPrice = true,
   loading = false,
-  autoContinueOnPopupClose = true,
+  autoStartOnOpen = true,
   onRetrySync,
   onApplyManualPrice,
 }: MlBrowserValidationDialogProps) {
   const popupRef = useRef<Window | null>(null);
-  const autoContinueRef = useRef(autoContinueOnPopupClose);
+  const autoStartedRef = useRef(false);
   const continuingRef = useRef(false);
   const [manualPrice, setManualPrice] = useState("");
   const [manualPromotionalPrice, setManualPromotionalPrice] = useState("");
   const [localError, setLocalError] = useState<string | null>(null);
   const [statusMessage, setStatusMessage] = useState<string | null>(null);
-  const [popupOpen, setPopupOpen] = useState(false);
-  const [validationDone, setValidationDone] = useState(false);
+  const [extensionReady, setExtensionReady] = useState(false);
+  const [browserTabOpen, setBrowserTabOpen] = useState(false);
   const [continuing, setContinuing] = useState(false);
 
-  useEffect(() => {
-    autoContinueRef.current = autoContinueOnPopupClose;
-  }, [autoContinueOnPopupClose]);
-
-  useEffect(() => {
-    if (!open) {
-      popupRef.current?.close();
-      popupRef.current = null;
+  const applyScrapedPrice = useCallback(
+    async (price: number, promotionalPrice: number | null) => {
+      if (continuingRef.current) return;
+      continuingRef.current = true;
+      setContinuing(true);
       setLocalError(null);
-      setStatusMessage(null);
-      setPopupOpen(false);
-      setValidationDone(false);
-      setContinuing(false);
-      continuingRef.current = false;
-      return;
-    }
-  }, [open]);
+      setStatusMessage(`Preço R$ ${price.toFixed(2)} capturado. Sincronizando...`);
 
-  const continueAfterValidation = useCallback(async () => {
-    if (continuingRef.current) return;
-    continuingRef.current = true;
-    setContinuing(true);
+      try {
+        if (onApplyManualPrice) {
+          await onApplyManualPrice({ price, promotionalPrice });
+        } else {
+          await onRetrySync();
+        }
+        onOpenChange(false);
+      } catch (error) {
+        setLocalError(
+          error instanceof Error ? error.message : "Erro ao sincronizar preço capturado"
+        );
+      } finally {
+        continuingRef.current = false;
+        setContinuing(false);
+      }
+    },
+    [onApplyManualPrice, onOpenChange, onRetrySync]
+  );
+
+  const startBrowserScrape = useCallback(async () => {
     setLocalError(null);
+    setStatusMessage("Abrindo Mercado Livre no seu navegador...");
 
-    try {
-      await onRetrySync();
-      onOpenChange(false);
-    } catch (error) {
-      setLocalError(
-        error instanceof Error
-          ? error.message
-          : "Não foi possível continuar. Informe o preço manualmente abaixo."
-      );
-    } finally {
-      continuingRef.current = false;
-      setContinuing(false);
+    const bridge = getMlExtensionBridge() || (await waitForMlExtensionBridge(3000));
+
+    if (bridge) {
+      try {
+        await bridge.startValidation({
+          sourceUrl,
+          adminOrigin: getAdminOrigin(),
+        });
+        setExtensionReady(true);
+        setBrowserTabOpen(true);
+        setStatusMessage(
+          "Aba do Mercado Livre aberta. Se aparecer captcha, conclua a verificação — o preço será lido e a aba fechada automaticamente."
+        );
+        return;
+      } catch (error) {
+        setLocalError(
+          error instanceof Error ? error.message : "Falha ao abrir aba via extensão."
+        );
+      }
     }
-  }, [onOpenChange, onRetrySync]);
-
-  const openMercadoLivrePopup = useCallback(() => {
-    setLocalError(null);
-    setStatusMessage(null);
-    setValidationDone(false);
 
     popupRef.current?.close();
     const popup = window.open(sourceUrl, "ml-validation", POPUP_FEATURES);
 
     if (!popup) {
       setLocalError(
-        "Não foi possível abrir a janela. Permita popups para este site ou use “Abrir em nova aba”."
+        "Instale a extensão Multiline Motopeças (pasta extension/) e recarregue o admin, ou permita popups neste site."
       );
       return;
     }
 
     popupRef.current = popup;
-    setPopupOpen(true);
+    setBrowserTabOpen(true);
     setStatusMessage(
-      "Janela do Mercado Livre aberta. Conclua login/captcha, confira o produto e feche a janela."
+      "Extensão não detectada — leitura automática indisponível. Conclua o captcha, feche a janela e informe o preço manualmente."
     );
   }, [sourceUrl]);
 
   useEffect(() => {
-    if (!open || !popupOpen) return;
+    if (!open) {
+      popupRef.current?.close();
+      popupRef.current = null;
+      autoStartedRef.current = false;
+      setLocalError(null);
+      setStatusMessage(null);
+      setExtensionReady(false);
+      setBrowserTabOpen(false);
+      setContinuing(false);
+      continuingRef.current = false;
+      return;
+    }
+
+    return subscribeMlExtensionBridge((bridge) => {
+      setExtensionReady(Boolean(bridge));
+    });
+  }, [open]);
+
+  useEffect(() => {
+    if (!open || !autoStartOnOpen || autoStartedRef.current) return;
+    autoStartedRef.current = true;
+    void startBrowserScrape();
+  }, [open, autoStartOnOpen, startBrowserScrape]);
+
+  useEffect(() => {
+    if (!open) return;
+
+    let unsubscribe: (() => void) | undefined;
+    let attached = false;
+
+    function attachListener() {
+      const bridge = getMlExtensionBridge();
+      if (!bridge || attached) return;
+
+      attached = true;
+      unsubscribe = bridge.onSessionCaptured((detail) => {
+        if (detail.error && detail.scrapedPrice == null) {
+          setLocalError(detail.error);
+          return;
+        }
+
+        if (detail.scrapedPrice != null && Number.isFinite(detail.scrapedPrice)) {
+          setBrowserTabOpen(false);
+          void applyScrapedPrice(
+            detail.scrapedPrice,
+            detail.scrapedPromotionalPrice ?? null
+          );
+          return;
+        }
+
+        if (detail.persisted && detail.hasScrapedPrice) {
+          void applyScrapedPrice(
+            detail.scrapedPrice ?? 0,
+            detail.scrapedPromotionalPrice ?? null
+          );
+        }
+      });
+    }
+
+    attachListener();
+    const poll = window.setInterval(() => {
+      if (!attached) attachListener();
+    }, 400);
+
+    return () => {
+      window.clearInterval(poll);
+      unsubscribe?.();
+    };
+  }, [open, applyScrapedPrice]);
+
+  useEffect(() => {
+    if (!open || !browserTabOpen || extensionReady) return;
+
+    const popup = popupRef.current;
+    if (!popup) return;
 
     const interval = window.setInterval(() => {
-      const popup = popupRef.current;
-      if (!popup || !popup.closed) return;
-
-      window.clearInterval(interval);
-      popupRef.current = null;
-      setPopupOpen(false);
-      setValidationDone(true);
-      setStatusMessage(
-        showManualPrice && onApplyManualPrice
-          ? "Janela fechada. Informe o preço visto no Mercado Livre ou clique em tentar sincronizar novamente."
-          : "Janela fechada. Clique em continuar para concluir."
-      );
-
-      if (autoContinueRef.current) {
-        void continueAfterValidation();
+      if (popup.closed) {
+        window.clearInterval(interval);
+        popupRef.current = null;
+        setBrowserTabOpen(false);
+        setStatusMessage(
+          "Janela fechada. Informe o preço manualmente ou instale a extensão para leitura automática."
+        );
       }
     }, 800);
 
     return () => window.clearInterval(interval);
-  }, [
-    open,
-    popupOpen,
-    showManualPrice,
-    onApplyManualPrice,
-    continueAfterValidation,
-  ]);
+  }, [open, browserTabOpen, extensionReady]);
 
   useEffect(() => {
     if (!open) return;
@@ -165,7 +239,15 @@ export function MlBrowserValidationDialog({
 
   async function handleRetry() {
     setLocalError(null);
-    await continueAfterValidation();
+    setContinuing(true);
+    try {
+      await onRetrySync();
+      onOpenChange(false);
+    } catch (error) {
+      setLocalError(error instanceof Error ? error.message : "Erro ao sincronizar");
+    } finally {
+      setContinuing(false);
+    }
   }
 
   async function handleApplyManualPrice() {
@@ -187,16 +269,7 @@ export function MlBrowserValidationDialog({
       return;
     }
 
-    setLocalError(null);
-    setContinuing(true);
-    try {
-      await onApplyManualPrice({ price, promotionalPrice });
-      onOpenChange(false);
-    } catch (error) {
-      setLocalError(error instanceof Error ? error.message : "Erro ao aplicar preço");
-    } finally {
-      setContinuing(false);
-    }
+    await applyScrapedPrice(price, promotionalPrice);
   }
 
   const busy = loading || continuing;
@@ -235,21 +308,33 @@ export function MlBrowserValidationDialog({
         <div className="px-5 py-4 space-y-4">
           <p className="text-sm text-muted-foreground">{description}</p>
 
-          <ol className="text-sm space-y-2 list-decimal list-inside text-muted-foreground">
-            <li>Abra a página do Mercado Livre.</li>
-            <li>Faça login, captcha ou validação solicitada.</li>
-            <li>Feche a janela quando o produto estiver visível.</li>
-            {showManualPrice && onApplyManualPrice ? (
-              <li>Informe o preço visto na página ou tente sincronizar novamente.</li>
-            ) : (
-              <li>Clique em continuar para concluir o processo.</li>
-            )}
-          </ol>
+          <div
+            className={`rounded-lg border px-3 py-2 text-xs ${
+              extensionReady
+                ? "border-green-500/30 bg-green-500/10 text-green-700 dark:text-green-300"
+                : "border-amber-500/30 bg-amber-500/10 text-amber-800 dark:text-amber-200"
+            }`}
+          >
+            {extensionReady
+              ? "Extensão ativa — aba aberta automaticamente, preço lido e sincronizado sem intervenção."
+              : "Para leitura automática: carregue a extensão em chrome://extensions (modo desenvolvedor → pasta extension/) e recarregue o admin (F5)."}
+          </div>
+
+          {busy && (
+            <div className="flex items-center gap-2 text-sm text-muted-foreground">
+              <Loader2 className="h-4 w-4 animate-spin" />
+              Processando...
+            </div>
+          )}
+
+          {statusMessage && !busy && (
+            <p className="text-sm text-muted-foreground">{statusMessage}</p>
+          )}
 
           <div className="flex flex-wrap gap-2">
-            <Button type="button" variant="outline" onClick={openMercadoLivrePopup}>
+            <Button type="button" variant="outline" disabled={busy} onClick={startBrowserScrape}>
               <ExternalLink className="h-4 w-4" />
-              Abrir Mercado Livre
+              Reabrir Mercado Livre
             </Button>
             <Button type="button" variant="ghost" asChild>
               <a href={sourceUrl} target="_blank" rel="noopener noreferrer">
@@ -258,16 +343,9 @@ export function MlBrowserValidationDialog({
             </Button>
           </div>
 
-          {statusMessage && (
-            <p className="text-sm text-muted-foreground">{statusMessage}</p>
-          )}
-
-          {validationDone && showManualPrice && onApplyManualPrice && (
+          {showManualPrice && onApplyManualPrice && !extensionReady && (
             <div className="rounded-lg border bg-muted/20 p-4 space-y-3">
-              <p className="text-sm font-medium">Preço após validação no Mercado Livre</p>
-              <p className="text-xs text-muted-foreground">
-                Copie o preço exibido na página do anúncio após concluir o captcha.
-              </p>
+              <p className="text-sm font-medium">Preço manual (sem extensão)</p>
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 <div className="space-y-1">
                   <Label htmlFor="ml-manual-price">Preço (R$)</Label>
@@ -276,7 +354,6 @@ export function MlBrowserValidationDialog({
                     value={manualPrice}
                     onChange={(e) => setManualPrice(e.target.value)}
                     placeholder="Ex: 129.90"
-                    autoFocus
                   />
                 </div>
                 <div className="space-y-1">
@@ -295,7 +372,6 @@ export function MlBrowserValidationDialog({
                 disabled={busy}
                 onClick={handleApplyManualPrice}
               >
-                {busy ? <Loader2 className="h-4 w-4 animate-spin" /> : null}
                 Aplicar preço informado
               </Button>
             </div>
