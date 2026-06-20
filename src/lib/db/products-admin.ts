@@ -239,3 +239,49 @@ export async function saveProduct(
 export async function deleteProduct(id: string) {
   await prisma.products.delete({ where: { id } });
 }
+
+function parseManualPrice(value: unknown, label: string): number {
+  const parsed =
+    typeof value === "number"
+      ? value
+      : typeof value === "string"
+        ? Number.parseFloat(value.replace(",", "."))
+        : Number.NaN;
+
+  if (!Number.isFinite(parsed) || parsed <= 0) {
+    throw new Error(`${label} inválido.`);
+  }
+
+  return Math.round(parsed * 100) / 100;
+}
+
+export async function updateProductPrices(
+  id: string,
+  input: { price: unknown; promotional_price?: unknown | null }
+) {
+  const price = parseManualPrice(input.price, "Preço");
+  let promotionalPrice: number | null = null;
+
+  if (
+    input.promotional_price != null &&
+    input.promotional_price !== "" &&
+    input.promotional_price !== undefined
+  ) {
+    promotionalPrice = parseManualPrice(input.promotional_price, "Preço promocional");
+    if (promotionalPrice >= price) {
+      throw new Error("Preço promocional deve ser menor que o preço normal.");
+    }
+  }
+
+  const updated = await prisma.products.update({
+    where: { id },
+    data: {
+      price,
+      promotional_price: promotionalPrice,
+      is_promotion: promotionalPrice != null,
+    },
+    include: productInclude,
+  });
+
+  return mapProduct(updated);
+}

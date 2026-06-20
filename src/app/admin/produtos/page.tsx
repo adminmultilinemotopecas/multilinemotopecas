@@ -20,9 +20,9 @@ import {
   ProductPriceSyncButton,
   SyncAllPricesPanel,
 } from "@/components/admin/price-sync-controls";
+import { ProductInlinePriceEditor } from "@/components/admin/product-inline-price-editor";
 import { PriceSyncStatusDisplay } from "@/components/admin/price-sync-status";
 import { adminFetch } from "@/lib/admin/client";
-import { formatPrice } from "@/lib/utils";
 import type { Product, ProductStatus, ListingStatus } from "@/types/database";
 
 const PAGE_SIZE = 15;
@@ -57,6 +57,17 @@ export default function AdminProductsPage() {
     } finally {
       setLoading(false);
     }
+  }
+
+  async function handlePriceSaved(
+    productId: string,
+    updated: Pick<Product, "price" | "promotional_price" | "is_promotion">
+  ) {
+    setProducts((current) =>
+      current.map((product) =>
+        product.id === productId ? { ...product, ...updated } : product
+      )
+    );
   }
 
   async function handleDelete(product: Product) {
@@ -282,17 +293,17 @@ export default function AdminProductsPage() {
             render: (p) => p.brand?.name || "-",
           },
           {
-            key: "price",
-            label: "Preço",
-            className: "whitespace-nowrap",
-            render: (p) => formatPrice(p.price),
-          },
-          {
-            key: "promotional_price",
-            label: "Promoção",
-            className: "whitespace-nowrap",
-            render: (p) =>
-              p.promotional_price != null ? formatPrice(p.promotional_price) : "-",
+            key: "prices",
+            label: "Preços",
+            className: "min-w-[180px]",
+            render: (p) => (
+              <ProductInlinePriceEditor
+                productId={p.id}
+                price={p.price}
+                promotionalPrice={p.promotional_price}
+                onSaved={(updated) => handlePriceSaved(p.id, updated)}
+              />
+            ),
           },
           {
             key: "price_sync",
