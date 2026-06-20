@@ -24,6 +24,7 @@ import type { Product, Brand, Category, MotorcycleModel, ProductImage } from "@/
 import { ArrowDown, ArrowUp, ImagePlus, Loader2, Save, Trash2 } from "lucide-react";
 import { ProductPriceSyncButton } from "@/components/admin/price-sync-controls";
 import { MlBrowserValidationDialog } from "@/components/admin/ml-browser-validation-dialog";
+import { ProductCompatibilitySection } from "@/components/admin/product-compatibility-section";
 
 interface ProductFormProps {
   product?: Product;
@@ -131,16 +132,15 @@ export function ProductForm({
   const [modelCompat, setModelCompat] = useState<ModelCompatibilitySelection[]>(
     buildInitialCompatibilities(motorcycleModels, selectedCompatibilities)
   );
+  const [extraMotorcycleModels, setExtraMotorcycleModels] = useState<MotorcycleModel[]>([]);
 
-  const sortedMotorcycleModels = useMemo(
-    () =>
-      [...motorcycleModels].sort((a, b) => {
-        const brand = a.motorcycle_brand.localeCompare(b.motorcycle_brand);
-        if (brand !== 0) return brand;
-        return a.model.localeCompare(b.model);
-      }),
-    [motorcycleModels]
-  );
+  const allMotorcycleModels = useMemo(() => {
+    const byId = new Map<string, MotorcycleModel>();
+    for (const model of [...motorcycleModels, ...extraMotorcycleModels]) {
+      byId.set(model.id, model);
+    }
+    return [...byId.values()];
+  }, [motorcycleModels, extraMotorcycleModels]);
   const [imageFields, setImageFields] = useState<ImageField[]>(
     buildInitialImages(initialImages.length > 0 ? initialImages : product?.images)
   );
@@ -341,485 +341,473 @@ export function ProductForm({
         </div>
       )}
 
-      <Card>
-        <CardHeader>
-          <CardTitle>Informações Básicas</CardTitle>
-        </CardHeader>
-        <CardContent className="grid grid-cols-1 md:grid-cols-2 gap-4">
-          <div className="md:col-span-2">
-            <Label>Nome *</Label>
-            <Input value={form.name} onChange={(e) => updateField("name", e.target.value)} required className="mt-1" />
-          </div>
-          <div>
-            <Label>SKU *</Label>
-            <Input value={form.sku} onChange={(e) => updateField("sku", e.target.value)} required className="mt-1" />
-          </div>
-          <div>
-            <Label>Código Interno</Label>
-            <Input
-              value={form.internal_code}
-              onChange={(e) => updateField("internal_code", e.target.value)}
-              readOnly={isNewProduct}
-              className={cn("mt-1", isNewProduct && "bg-muted/50 cursor-default")}
-              placeholder={isNewProduct ? "Gerando..." : undefined}
-            />
-            {isNewProduct && (
-              <p className="text-[11px] text-muted-foreground mt-1.5">
-                Gerado automaticamente (6 dígitos) ao salvar o produto.
+      <div className="grid xl:grid-cols-[minmax(0,1fr)_320px] gap-6 items-start">
+        <div className="space-y-6 min-w-0">
+          <Card>
+            <CardHeader>
+              <CardTitle>Cadastro rápido</CardTitle>
+              <p className="text-sm text-muted-foreground mt-1">
+                Preencha primeiro nome, preço e identificação — o restante pode vir depois.
               </p>
-            )}
-          </div>
-          <div>
-            <Label>Marca</Label>
-            <Select
-              value={form.brand_id || undefined}
-              onValueChange={(v) => updateField("brand_id", v)}
-            >
-              <SelectTrigger className="mt-1"><SelectValue placeholder="Selecione" /></SelectTrigger>
-              <SelectContent>
-                {brands.map((b) => <SelectItem key={b.id} value={b.id}>{b.name}</SelectItem>)}
-              </SelectContent>
-            </Select>
-          </div>
-          <div>
-            <Label>Categoria</Label>
-            <Select
-              value={form.category_id || undefined}
-              onValueChange={(v) => updateField("category_id", v)}
-            >
-              <SelectTrigger className="mt-1"><SelectValue placeholder="Selecione" /></SelectTrigger>
-              <SelectContent>
-                {categories.map((c) => <SelectItem key={c.id} value={c.id}>{c.name}</SelectItem>)}
-              </SelectContent>
-            </Select>
-          </div>
-          <div>
-            <Label>Subcategoria</Label>
-            <Select
-              value={form.subcategory_id || undefined}
-              onValueChange={(v) => updateField("subcategory_id", v)}
-            >
-              <SelectTrigger className="mt-1"><SelectValue placeholder="Selecione" /></SelectTrigger>
-              <SelectContent>
-                {subcategories.map((c) => <SelectItem key={c.id} value={c.id}>{c.name}</SelectItem>)}
-              </SelectContent>
-            </Select>
-          </div>
-          <div>
-            <Label>Status</Label>
-            <Select value={form.status} onValueChange={(v) => updateField("status", v)}>
-              <SelectTrigger className="mt-1"><SelectValue /></SelectTrigger>
-              <SelectContent>
-                <SelectItem value="active">Ativo</SelectItem>
-                <SelectItem value="inactive">Inativo</SelectItem>
-                <SelectItem value="draft">Rascunho</SelectItem>
-                <SelectItem value="out_of_stock">Sem Estoque</SelectItem>
-              </SelectContent>
-            </Select>
-          </div>
-        </CardContent>
-      </Card>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              <div>
+                <Label>Nome *</Label>
+                <Input
+                  value={form.name}
+                  onChange={(e) => updateField("name", e.target.value)}
+                  required
+                  className="mt-1"
+                  placeholder="Nome do produto"
+                />
+              </div>
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                <div>
+                  <Label>SKU *</Label>
+                  <Input
+                    value={form.sku}
+                    onChange={(e) => updateField("sku", e.target.value)}
+                    required
+                    className="mt-1"
+                  />
+                </div>
+                <div>
+                  <Label>Código Interno</Label>
+                  <Input
+                    value={form.internal_code}
+                    onChange={(e) => updateField("internal_code", e.target.value)}
+                    readOnly={isNewProduct}
+                    className={cn("mt-1", isNewProduct && "bg-muted/50 cursor-default")}
+                    placeholder={isNewProduct ? "Gerando..." : undefined}
+                  />
+                </div>
+                <div>
+                  <Label>Status</Label>
+                  <Select value={form.status} onValueChange={(v) => updateField("status", v)}>
+                    <SelectTrigger className="mt-1">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="active">Ativo</SelectItem>
+                      <SelectItem value="inactive">Inativo</SelectItem>
+                      <SelectItem value="draft">Rascunho</SelectItem>
+                      <SelectItem value="out_of_stock">Sem Estoque</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+              </div>
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                <div>
+                  <Label>Preço *</Label>
+                  <Input
+                    type="number"
+                    step="0.01"
+                    value={form.price}
+                    onChange={(e) => updateField("price", e.target.value)}
+                    required
+                    className="mt-1"
+                  />
+                </div>
+                <div>
+                  <Label>Preço Promocional</Label>
+                  <Input
+                    type="number"
+                    step="0.01"
+                    value={form.promotional_price}
+                    onChange={(e) => updateField("promotional_price", e.target.value)}
+                    className="mt-1"
+                  />
+                </div>
+                <div>
+                  <Label>Estoque</Label>
+                  <Input
+                    type="number"
+                    value={form.stock}
+                    onChange={(e) => updateField("stock", e.target.value)}
+                    className="mt-1"
+                  />
+                </div>
+              </div>
+              {isNewProduct && (
+                <p className="text-[11px] text-muted-foreground">
+                  O código interno é gerado automaticamente (6 dígitos) ao salvar.
+                </p>
+              )}
+              <div className="flex gap-3 pt-2 xl:hidden">
+                <Button type="submit" disabled={loading} className="flex-1">
+                  {loading ? (
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                  ) : (
+                    <Save className="h-4 w-4" />
+                  )}
+                  {product ? "Salvar" : "Criar"}
+                </Button>
+                <Button type="button" variant="outline" onClick={() => router.back()}>
+                  Cancelar
+                </Button>
+              </div>
+            </CardContent>
+          </Card>
 
-      <Card>
-        <CardHeader className="flex flex-row items-center justify-between">
-          <div>
-            <CardTitle>Imagens do Produto</CardTitle>
-            <p className="text-sm text-muted-foreground mt-1">
-              Cole os links das imagens (URL). Use as setas para ordenar — a primeira será a principal.
-            </p>
-          </div>
-          <Button type="button" variant="outline" size="sm" onClick={addImageField}>
-            <ImagePlus className="h-4 w-4" />
-            Adicionar imagem
-          </Button>
-        </CardHeader>
-        <CardContent className="space-y-4">
-          {imageFields.map((image, index) => (
-            <div
-              key={index}
-              className="grid grid-cols-1 md:grid-cols-[auto_1fr_1fr_auto] gap-3 items-end p-4 rounded-lg border bg-muted/20"
-            >
-              <div className="flex md:flex-col gap-1 items-center md:items-stretch pb-1 md:pb-0">
-                <span className="text-xs font-bold text-muted-foreground md:text-center md:mb-1">
-                  #{index + 1}
-                </span>
-                <Button
-                  type="button"
-                  variant="outline"
-                  size="icon"
-                  className="h-8 w-8"
-                  onClick={() => moveImageField(index, "up")}
-                  disabled={index === 0}
-                  title="Mover para cima"
-                >
-                  <ArrowUp className="h-4 w-4" />
-                </Button>
-                <Button
-                  type="button"
-                  variant="outline"
-                  size="icon"
-                  className="h-8 w-8"
-                  onClick={() => moveImageField(index, "down")}
-                  disabled={index === imageFields.length - 1}
-                  title="Mover para baixo"
-                >
-                  <ArrowDown className="h-4 w-4" />
-                </Button>
-              </div>
+          <Card>
+            <CardHeader className="flex flex-row items-center justify-between gap-3">
               <div>
-                <Label>
-                  URL da imagem {index + 1}
-                  {index === 0 && <span className="text-primary ml-1">(principal)</span>}
-                </Label>
-                <Input
-                  type="url"
-                  value={image.url}
-                  onChange={(e) => updateImageField(index, "url", e.target.value)}
-                  placeholder="https://exemplo.com/imagem.jpg"
-                  className="mt-1"
-                />
+                <CardTitle>Imagens</CardTitle>
+                <p className="text-sm text-muted-foreground mt-1">
+                  A primeira imagem será a principal do catálogo.
+                </p>
               </div>
-              <div>
-                <Label>Texto alternativo (opcional)</Label>
-                <Input
-                  value={image.alt_text}
-                  onChange={(e) => updateImageField(index, "alt_text", e.target.value)}
-                  placeholder={form.name || "Descrição da imagem"}
-                  className="mt-1"
-                />
-              </div>
-              <Button
-                type="button"
-                variant="ghost"
-                size="icon"
-                onClick={() => removeImageField(index)}
-                className="text-muted-foreground hover:text-destructive"
-                title="Remover imagem"
-              >
-                <Trash2 className="h-4 w-4" />
+              <Button type="button" variant="outline" size="sm" onClick={addImageField}>
+                <ImagePlus className="h-4 w-4" />
+                Adicionar
               </Button>
-              {image.url && (
-                <div className="md:col-span-4 flex items-center gap-3">
-                  <div className="h-20 w-20 rounded-md border bg-white p-1 flex items-center justify-center shrink-0">
-                    {/* eslint-disable-next-line @next/next/no-img-element */}
-                    <img
-                      src={image.url}
-                      alt={image.alt_text || form.name || "Prévia"}
-                      className="max-h-full max-w-full object-contain"
-                      onError={(e) => {
-                        (e.target as HTMLImageElement).style.display = "none";
-                      }}
+            </CardHeader>
+            <CardContent className="space-y-4">
+              {imageFields.map((image, index) => (
+                <div
+                  key={index}
+                  className="grid grid-cols-1 md:grid-cols-[auto_1fr_1fr_auto] gap-3 items-end p-4 rounded-lg border bg-muted/20"
+                >
+                  <div className="flex md:flex-col gap-1 items-center md:items-stretch pb-1 md:pb-0">
+                    <span className="text-xs font-bold text-muted-foreground md:text-center md:mb-1">
+                      #{index + 1}
+                    </span>
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="icon"
+                      className="h-8 w-8"
+                      onClick={() => moveImageField(index, "up")}
+                      disabled={index === 0}
+                      title="Mover para cima"
+                    >
+                      <ArrowUp className="h-4 w-4" />
+                    </Button>
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="icon"
+                      className="h-8 w-8"
+                      onClick={() => moveImageField(index, "down")}
+                      disabled={index === imageFields.length - 1}
+                      title="Mover para baixo"
+                    >
+                      <ArrowDown className="h-4 w-4" />
+                    </Button>
+                  </div>
+                  <div>
+                    <Label>
+                      URL {index === 0 && <span className="text-primary">(principal)</span>}
+                    </Label>
+                    <Input
+                      type="url"
+                      value={image.url}
+                      onChange={(e) => updateImageField(index, "url", e.target.value)}
+                      placeholder="https://exemplo.com/imagem.jpg"
+                      className="mt-1"
                     />
                   </div>
-                  {index === 0 && (
-                    <span className="text-xs text-primary font-semibold uppercase tracking-wide">
-                      Imagem principal do catálogo
-                    </span>
-                  )}
-                </div>
-              )}
-            </div>
-          ))}
-        </CardContent>
-      </Card>
-
-      <Card>
-        <CardHeader>
-          <CardTitle>Preço e Estoque</CardTitle>
-        </CardHeader>
-        <CardContent className="grid grid-cols-1 md:grid-cols-3 gap-4">
-          <div>
-            <Label>Preço *</Label>
-            <Input type="number" step="0.01" value={form.price} onChange={(e) => updateField("price", e.target.value)} required className="mt-1" />
-          </div>
-          <div>
-            <Label>Preço Promocional</Label>
-            <Input type="number" step="0.01" value={form.promotional_price} onChange={(e) => updateField("promotional_price", e.target.value)} className="mt-1" />
-          </div>
-          <div>
-            <Label>Estoque</Label>
-            <Input type="number" value={form.stock} onChange={(e) => updateField("stock", e.target.value)} className="mt-1" />
-          </div>
-        </CardContent>
-      </Card>
-
-      <Card>
-        <CardHeader>
-          <CardTitle>Mercado Livre</CardTitle>
-        </CardHeader>
-        <CardContent className="grid grid-cols-1 md:grid-cols-2 gap-4">
-          <div className="md:col-span-2">
-            <Label>URL de origem (página ML para sync de preço)</Label>
-            <Input
-              value={form.ml_source_url}
-              onChange={(e) => updateField("ml_source_url", e.target.value)}
-              placeholder="https://produto.mercadolivre.com.br/MLB-..."
-              className="mt-1"
-            />
-            <p className="text-xs text-muted-foreground mt-1">
-              URL da página original do anúncio. Usada para sincronizar preços automaticamente.
-            </p>
-          </div>
-          <div className="md:col-span-2">
-            <Label>URL do Anúncio (afiliado)</Label>
-            <Input value={form.mercado_livre_url} onChange={(e) => updateField("mercado_livre_url", e.target.value)} placeholder="https://meli.la/... ou https://produto.mercadolivre.com.br/..." className="mt-1" />
-          </div>
-          <div>
-            <Label>ID do Anúncio</Label>
-            <Input value={form.mercado_livre_id} onChange={(e) => updateField("mercado_livre_id", e.target.value)} className="mt-1" />
-          </div>
-          <div>
-            <Label>Status do Anúncio</Label>
-            <Select value={form.listing_status} onValueChange={(v) => updateField("listing_status", v)}>
-              <SelectTrigger className="mt-1"><SelectValue /></SelectTrigger>
-              <SelectContent>
-                <SelectItem value="active">Ativo</SelectItem>
-                <SelectItem value="paused">Pausado</SelectItem>
-                <SelectItem value="closed">Encerrado</SelectItem>
-                <SelectItem value="not_listed">Não listado</SelectItem>
-              </SelectContent>
-            </Select>
-          </div>
-          <div className="md:col-span-2 flex items-center gap-2">
-            <input
-              id="price_sync_enabled"
-              type="checkbox"
-              checked={form.price_sync_enabled}
-              onChange={(e) => updateField("price_sync_enabled", e.target.checked)}
-              className="h-4 w-4 rounded border-input"
-            />
-            <Label htmlFor="price_sync_enabled">Sincronização automática de preço habilitada</Label>
-          </div>
-          {product && (
-            <div className="md:col-span-2">
-              <ProductPriceSyncButton
-                product={product}
-                onSynced={() => router.refresh()}
-              />
-            </div>
-          )}
-        </CardContent>
-      </Card>
-
-      <Card>
-        <CardHeader>
-          <CardTitle>Descrições</CardTitle>
-        </CardHeader>
-        <CardContent className="space-y-4">
-          <div>
-            <Label>Descrição Curta</Label>
-            <textarea
-              value={form.short_description}
-              onChange={(e) => updateField("short_description", e.target.value)}
-              className="mt-1 flex w-full rounded-md border border-input bg-background px-3 py-2 text-sm min-h-[80px]"
-            />
-          </div>
-          <div>
-            <Label>Descrição Completa</Label>
-            <textarea
-              value={form.full_description}
-              onChange={(e) => updateField("full_description", e.target.value)}
-              className="mt-1 flex w-full rounded-md border border-input bg-background px-3 py-2 text-sm min-h-[160px]"
-            />
-          </div>
-          <div>
-            <Label>Aplicações</Label>
-            <textarea value={form.applications} onChange={(e) => updateField("applications", e.target.value)} className="mt-1 flex w-full rounded-md border border-input bg-background px-3 py-2 text-sm min-h-[80px]" />
-          </div>
-          <div>
-            <Label>Compatibilidades</Label>
-            <textarea value={form.compatibilities} onChange={(e) => updateField("compatibilities", e.target.value)} className="mt-1 flex w-full rounded-md border border-input bg-background px-3 py-2 text-sm min-h-[80px]" />
-          </div>
-          <div>
-            <Label>Referências</Label>
-            <textarea value={form.product_references} onChange={(e) => updateField("product_references", e.target.value)} className="mt-1 flex w-full rounded-md border border-input bg-background px-3 py-2 text-sm min-h-[80px]" />
-          </div>
-        </CardContent>
-      </Card>
-
-      <Card>
-        <CardHeader>
-          <CardTitle>SEO e Tags</CardTitle>
-        </CardHeader>
-        <CardContent className="grid grid-cols-1 md:grid-cols-2 gap-4">
-          <div>
-            <Label>Tags (separadas por vírgula)</Label>
-            <Input value={form.tags} onChange={(e) => updateField("tags", e.target.value)} className="mt-1" />
-          </div>
-          <div>
-            <Label>Palavras-chave SEO</Label>
-            <Input value={form.seo_keywords} onChange={(e) => updateField("seo_keywords", e.target.value)} className="mt-1" />
-          </div>
-        </CardContent>
-      </Card>
-
-      <Card>
-        <CardHeader>
-          <CardTitle>Modelos de Motos Compatíveis</CardTitle>
-          <p className="text-sm text-muted-foreground mt-1">
-            Marque o modelo e selecione o ano inicial e final de compatibilidade.
-          </p>
-        </CardHeader>
-        <CardContent>
-          <div className="space-y-2 max-h-96 overflow-y-auto pr-1 scrollbar-hide">
-            {sortedMotorcycleModels.map((model) => {
-              const selection = modelCompat.find((item) => item.modelId === model.id);
-              const isSelected = Boolean(selection);
-              const years = getModelYearRange(model);
-
-              return (
-                <div
-                  key={model.id}
-                  className={cn(
-                    "flex flex-col sm:flex-row sm:items-center gap-2 sm:gap-3 p-3 rounded-lg border transition-colors",
-                    isSelected ? "border-primary/40 bg-primary/5" : "border-border/60 hover:bg-muted/30"
-                  )}
-                >
-                  <label className="flex items-center gap-2 text-sm cursor-pointer flex-1 min-w-0">
-                    <input
-                      type="checkbox"
-                      checked={isSelected}
-                      onChange={(e) => {
-                        if (e.target.checked) {
-                          const defaults = getDefaultCompatibilityYears(model);
-                          setModelCompat((prev) => [
-                            ...prev,
-                            { modelId: model.id, ...defaults },
-                          ]);
-                        } else {
-                          setModelCompat((prev) =>
-                            prev.filter((item) => item.modelId !== model.id)
-                          );
-                        }
-                      }}
-                      className="rounded shrink-0"
+                  <div>
+                    <Label>Alt (opcional)</Label>
+                    <Input
+                      value={image.alt_text}
+                      onChange={(e) => updateImageField(index, "alt_text", e.target.value)}
+                      placeholder={form.name || "Descrição"}
+                      className="mt-1"
                     />
-                    <span className="truncate">
-                      <span className="font-semibold text-foreground">
-                        {model.motorcycle_brand}
-                      </span>{" "}
-                      {model.model}
-                      {model.displacement && ` ${model.displacement}`}
-                      {model.year_start && (
-                        <span className="text-muted-foreground text-xs ml-1">
-                          ({model.year_start}
-                          {model.year_end && model.year_end >= new Date().getFullYear()
-                            ? "+"
-                            : model.year_end
-                              ? `-${model.year_end}`
-                              : ""}
-                          )
-                        </span>
-                      )}
-                    </span>
-                  </label>
-                  {isSelected && (
-                    <div className="flex gap-2 sm:gap-3 shrink-0 pl-6 sm:pl-0">
-                      <div className="w-24 sm:w-28">
-                        <Label className="text-[10px] uppercase tracking-wider text-muted-foreground">
-                          Ano inicial
-                        </Label>
-                        <Select
-                          value={String(selection?.year ?? years[years.length - 1])}
-                          onValueChange={(value) => {
-                            const newStart = parseInt(value, 10);
-                            setModelCompat((prev) =>
-                              prev.map((item) => {
-                                if (item.modelId !== model.id) return item;
-                                const yearEnd =
-                                  item.yearEnd < newStart ? newStart : item.yearEnd;
-                                return { ...item, year: newStart, yearEnd };
-                              })
-                            );
+                  </div>
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="icon"
+                    onClick={() => removeImageField(index)}
+                    className="text-muted-foreground hover:text-destructive"
+                    title="Remover imagem"
+                  >
+                    <Trash2 className="h-4 w-4" />
+                  </Button>
+                  {image.url && (
+                    <div className="md:col-span-4 flex items-center gap-3">
+                      <div className="h-16 w-16 rounded-md border bg-white p-1 flex items-center justify-center shrink-0">
+                        {/* eslint-disable-next-line @next/next/no-img-element */}
+                        <img
+                          src={image.url}
+                          alt={image.alt_text || form.name || "Prévia"}
+                          className="max-h-full max-w-full object-contain"
+                          onError={(e) => {
+                            (e.target as HTMLImageElement).style.display = "none";
                           }}
-                        >
-                          <SelectTrigger className="mt-1 h-9">
-                            <SelectValue />
-                          </SelectTrigger>
-                          <SelectContent>
-                            {years.map((year) => (
-                              <SelectItem key={year} value={String(year)}>
-                                {year}
-                              </SelectItem>
-                            ))}
-                          </SelectContent>
-                        </Select>
-                      </div>
-                      <div className="w-24 sm:w-28">
-                        <Label className="text-[10px] uppercase tracking-wider text-muted-foreground">
-                          Ano final
-                        </Label>
-                        <Select
-                          value={String(selection?.yearEnd ?? years[0])}
-                          onValueChange={(value) => {
-                            const newEnd = parseInt(value, 10);
-                            setModelCompat((prev) =>
-                              prev.map((item) => {
-                                if (item.modelId !== model.id) return item;
-                                const year =
-                                  item.year > newEnd ? newEnd : item.year;
-                                return { ...item, year, yearEnd: newEnd };
-                              })
-                            );
-                          }}
-                        >
-                          <SelectTrigger className="mt-1 h-9">
-                            <SelectValue />
-                          </SelectTrigger>
-                          <SelectContent>
-                            {years
-                              .filter((year) => year >= (selection?.year ?? years[years.length - 1]))
-                              .map((year) => (
-                                <SelectItem key={year} value={String(year)}>
-                                  {year}
-                                </SelectItem>
-                              ))}
-                          </SelectContent>
-                        </Select>
+                        />
                       </div>
                     </div>
                   )}
                 </div>
-              );
-            })}
+              ))}
+            </CardContent>
+          </Card>
+
+          <ProductCompatibilitySection
+            motorcycleModels={allMotorcycleModels}
+            modelCompat={modelCompat}
+            onModelCompatChange={setModelCompat}
+            onModelsAdded={(models) =>
+              setExtraMotorcycleModels((prev) => {
+                const byId = new Map(prev.map((model) => [model.id, model]));
+                for (const model of models) byId.set(model.id, model);
+                return [...byId.values()];
+              })
+            }
+          />
+
+          <div className="grid lg:grid-cols-2 gap-6">
+            <Card>
+              <CardHeader>
+                <CardTitle>Descrições</CardTitle>
+              </CardHeader>
+              <CardContent className="space-y-4">
+                <div>
+                  <Label>Descrição curta</Label>
+                  <textarea
+                    value={form.short_description}
+                    onChange={(e) => updateField("short_description", e.target.value)}
+                    className="mt-1 flex w-full rounded-md border border-input bg-background px-3 py-2 text-sm min-h-[72px]"
+                  />
+                </div>
+                <div>
+                  <Label>Descrição completa</Label>
+                  <textarea
+                    value={form.full_description}
+                    onChange={(e) => updateField("full_description", e.target.value)}
+                    className="mt-1 flex w-full rounded-md border border-input bg-background px-3 py-2 text-sm min-h-[120px]"
+                  />
+                </div>
+                <div>
+                  <Label>Aplicações</Label>
+                  <textarea
+                    value={form.applications}
+                    onChange={(e) => updateField("applications", e.target.value)}
+                    className="mt-1 flex w-full rounded-md border border-input bg-background px-3 py-2 text-sm min-h-[72px]"
+                  />
+                </div>
+                <div>
+                  <Label>Compatibilidades (texto livre)</Label>
+                  <textarea
+                    value={form.compatibilities}
+                    onChange={(e) => updateField("compatibilities", e.target.value)}
+                    className="mt-1 flex w-full rounded-md border border-input bg-background px-3 py-2 text-sm min-h-[72px]"
+                  />
+                </div>
+                <div>
+                  <Label>Referências</Label>
+                  <textarea
+                    value={form.product_references}
+                    onChange={(e) => updateField("product_references", e.target.value)}
+                    className="mt-1 flex w-full rounded-md border border-input bg-background px-3 py-2 text-sm min-h-[72px]"
+                  />
+                </div>
+              </CardContent>
+            </Card>
+
+            <Card>
+              <CardHeader>
+                <CardTitle>Mercado Livre</CardTitle>
+              </CardHeader>
+              <CardContent className="space-y-4">
+                <div>
+                  <Label>URL de origem (sync de preço)</Label>
+                  <Input
+                    value={form.ml_source_url}
+                    onChange={(e) => updateField("ml_source_url", e.target.value)}
+                    placeholder="https://produto.mercadolivre.com.br/MLB-..."
+                    className="mt-1"
+                  />
+                </div>
+                <div>
+                  <Label>URL do anúncio (afiliado)</Label>
+                  <Input
+                    value={form.mercado_livre_url}
+                    onChange={(e) => updateField("mercado_livre_url", e.target.value)}
+                    placeholder="https://meli.la/..."
+                    className="mt-1"
+                  />
+                </div>
+                <div className="grid grid-cols-2 gap-4">
+                  <div>
+                    <Label>ID do anúncio</Label>
+                    <Input
+                      value={form.mercado_livre_id}
+                      onChange={(e) => updateField("mercado_livre_id", e.target.value)}
+                      className="mt-1"
+                    />
+                  </div>
+                  <div>
+                    <Label>Status do anúncio</Label>
+                    <Select
+                      value={form.listing_status}
+                      onValueChange={(v) => updateField("listing_status", v)}
+                    >
+                      <SelectTrigger className="mt-1">
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="active">Ativo</SelectItem>
+                        <SelectItem value="paused">Pausado</SelectItem>
+                        <SelectItem value="closed">Encerrado</SelectItem>
+                        <SelectItem value="not_listed">Não listado</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+                </div>
+                <label className="flex items-center gap-2 text-sm">
+                  <input
+                    id="price_sync_enabled"
+                    type="checkbox"
+                    checked={form.price_sync_enabled}
+                    onChange={(e) => updateField("price_sync_enabled", e.target.checked)}
+                    className="h-4 w-4 rounded border-input"
+                  />
+                  Sincronização automática de preço
+                </label>
+                {product && (
+                  <ProductPriceSyncButton
+                    product={product}
+                    onSynced={() => router.refresh()}
+                  />
+                )}
+              </CardContent>
+            </Card>
           </div>
-        </CardContent>
-      </Card>
+        </div>
 
-      <Card>
-        <CardHeader>
-          <CardTitle>Destaques</CardTitle>
-        </CardHeader>
-        <CardContent className="flex flex-wrap gap-4">
-          {[
-            { key: "is_featured", label: "Destaque" },
-            { key: "is_bestseller", label: "Mais Vendido" },
-            { key: "is_new", label: "Novo" },
-            { key: "is_promotion", label: "Promoção" },
-            { key: "is_launch", label: "Lançamento" },
-            { key: "is_recommended", label: "Recomendado" },
-          ].map(({ key, label }) => (
-            <label key={key} className="flex items-center gap-2 text-sm">
-              <input
-                type="checkbox"
-                checked={form[key as keyof typeof form] as boolean}
-                onChange={(e) => updateField(key, e.target.checked)}
-                className="rounded"
-              />
-              {label}
-            </label>
-          ))}
-        </CardContent>
-      </Card>
+        <aside className="space-y-6 xl:sticky xl:top-4">
+          <Card>
+            <CardHeader>
+              <CardTitle>Classificação</CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              <div>
+                <Label>Marca do produto</Label>
+                <Select
+                  value={form.brand_id || undefined}
+                  onValueChange={(v) => updateField("brand_id", v)}
+                >
+                  <SelectTrigger className="mt-1">
+                    <SelectValue placeholder="Selecione" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {brands.map((b) => (
+                      <SelectItem key={b.id} value={b.id}>
+                        {b.name}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+              <div>
+                <Label>Categoria</Label>
+                <Select
+                  value={form.category_id || undefined}
+                  onValueChange={(v) => updateField("category_id", v)}
+                >
+                  <SelectTrigger className="mt-1">
+                    <SelectValue placeholder="Selecione" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {categories.map((c) => (
+                      <SelectItem key={c.id} value={c.id}>
+                        {c.name}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+              <div>
+                <Label>Subcategoria</Label>
+                <Select
+                  value={form.subcategory_id || undefined}
+                  onValueChange={(v) => updateField("subcategory_id", v)}
+                >
+                  <SelectTrigger className="mt-1">
+                    <SelectValue placeholder="Selecione" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {subcategories.map((c) => (
+                      <SelectItem key={c.id} value={c.id}>
+                        {c.name}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+            </CardContent>
+          </Card>
 
-      <div className="flex gap-4">
-        <Button type="submit" disabled={loading} size="lg">
-          {loading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
-          {product ? "Salvar Alterações" : "Criar Produto"}
-        </Button>
-        <Button type="button" variant="outline" onClick={() => router.back()}>
-          Cancelar
-        </Button>
+          <Card>
+            <CardHeader>
+              <CardTitle>Destaques</CardTitle>
+            </CardHeader>
+            <CardContent className="grid grid-cols-2 gap-3">
+              {[
+                { key: "is_featured", label: "Destaque" },
+                { key: "is_bestseller", label: "Mais vendido" },
+                { key: "is_new", label: "Novo" },
+                { key: "is_promotion", label: "Promoção" },
+                { key: "is_launch", label: "Lançamento" },
+                { key: "is_recommended", label: "Recomendado" },
+              ].map(({ key, label }) => (
+                <label key={key} className="flex items-center gap-2 text-sm">
+                  <input
+                    type="checkbox"
+                    checked={form[key as keyof typeof form] as boolean}
+                    onChange={(e) => updateField(key, e.target.checked)}
+                    className="rounded"
+                  />
+                  {label}
+                </label>
+              ))}
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardHeader>
+              <CardTitle>SEO e tags</CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              <div>
+                <Label>Tags</Label>
+                <Input
+                  value={form.tags}
+                  onChange={(e) => updateField("tags", e.target.value)}
+                  placeholder="Separadas por vírgula"
+                  className="mt-1"
+                />
+              </div>
+              <div>
+                <Label>Palavras-chave SEO</Label>
+                <Input
+                  value={form.seo_keywords}
+                  onChange={(e) => updateField("seo_keywords", e.target.value)}
+                  placeholder="Separadas por vírgula"
+                  className="mt-1"
+                />
+              </div>
+            </CardContent>
+          </Card>
+
+          <div className="flex flex-col gap-3">
+            <Button type="submit" disabled={loading} size="lg" className="w-full">
+              {loading ? (
+                <Loader2 className="h-4 w-4 animate-spin" />
+              ) : (
+                <Save className="h-4 w-4" />
+              )}
+              {product ? "Salvar alterações" : "Criar produto"}
+            </Button>
+            <Button type="button" variant="outline" onClick={() => router.back()} className="w-full">
+              Cancelar
+            </Button>
+          </div>
+        </aside>
       </div>
     </form>
 
