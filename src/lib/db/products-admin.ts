@@ -62,6 +62,12 @@ function buildProductData(
   isNew: boolean,
   options?: { clearPendingVerification?: boolean }
 ) {
+  const status: ProductStatus = options?.clearPendingVerification
+    ? input.status === "inactive"
+      ? "inactive"
+      : "active"
+    : (input.status ?? "draft");
+
   const data = {
     name: input.name.trim(),
     slug,
@@ -87,7 +93,7 @@ function buildProductData(
     ml_source_url: input.ml_source_url?.trim() || null,
     price_sync_enabled: input.price_sync_enabled ?? true,
     listing_status: input.listing_status ?? "not_listed",
-    status: input.status ?? "draft",
+    status,
     is_featured: input.is_featured ?? false,
     is_bestseller: input.is_bestseller ?? false,
     is_new: input.is_new ?? false,
@@ -102,7 +108,6 @@ function buildProductData(
       ml_verification_pending: false,
       ml_verified_at: new Date(),
       ml_verification_message: "Revisado e aprovado no cadastro.",
-      status: input.status === "inactive" ? "inactive" : "active",
     };
   }
 
