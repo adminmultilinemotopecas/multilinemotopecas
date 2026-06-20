@@ -16,7 +16,6 @@ import {
 import { adminFetch, AdminApiError } from "@/lib/admin/client";
 import { cn } from "@/lib/utils";
 import {
-  getDefaultCompatibilityYears,
   getModelYearRange,
   type ModelCompatibilitySelection,
 } from "@/lib/motorcycle-utils";
