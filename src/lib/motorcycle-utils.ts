@@ -36,6 +36,21 @@ export function getDefaultCompatibilityYears(model: MotorcycleModel): {
   };
 }
 
+/** Intervalo parcial: ano atual (se existir no modelo) até o último ano de fabricação. */
+export function getCurrentToLatestCompatibilityYears(model: MotorcycleModel): {
+  year: number;
+  yearEnd: number;
+} {
+  const years = getModelYearRange(model);
+  const newest = years[0] ?? CURRENT_YEAR;
+  const startYear = years.includes(CURRENT_YEAR) ? CURRENT_YEAR : newest;
+
+  return {
+    year: Math.min(startYear, newest),
+    yearEnd: newest,
+  };
+}
+
 export function getFullModelYearCompatibility(model: MotorcycleModel): {
   year: number;
   yearEnd: number;

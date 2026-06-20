@@ -24,7 +24,7 @@ import { MotorcycleModelForm } from "@/components/admin/motorcycle-model-form";
 import { cn } from "@/lib/utils";
 import {
   formatModelYearSpan,
-  getDefaultCompatibilityYears,
+  getCurrentToLatestCompatibilityYears,
   getFullModelYearCompatibility,
   getModelYearRange,
   isFullModelYearRange,
@@ -76,7 +76,7 @@ export function ProductCompatibilitySection({
     if (checked) {
       onModelCompatChange([
         ...modelCompat,
-        { modelId: model.id, ...getDefaultCompatibilityYears(model) },
+        { modelId: model.id, ...getCurrentToLatestCompatibilityYears(model) },
       ]);
       return;
     }
@@ -97,7 +97,7 @@ export function ProductCompatibilitySection({
     onModelsAdded([model]);
     onModelCompatChange([
       ...modelCompat.filter((item) => item.modelId !== model.id),
-      { modelId: model.id, ...getFullModelYearCompatibility(model) },
+      { modelId: model.id, ...getCurrentToLatestCompatibilityYears(model) },
     ]);
     setDialogOpen(false);
     setSearchQuery("");
@@ -199,6 +199,62 @@ export function ProductCompatibilitySection({
 
                     {isSelected && selection && (
                       <div className="flex flex-col sm:flex-row sm:flex-wrap sm:items-end gap-3 pl-6">
+                        <div className="w-28">
+                          <Label className="text-[10px] uppercase tracking-wider text-muted-foreground">
+                            Ano inicial
+                          </Label>
+                          <Select
+                            value={String(selection.year)}
+                            onValueChange={(value) => {
+                              const newStart = parseInt(value, 10);
+                              updateSelection(model.id, (item) => ({
+                                ...item,
+                                year: newStart,
+                                yearEnd: item.yearEnd < newStart ? newStart : item.yearEnd,
+                              }));
+                            }}
+                          >
+                            <SelectTrigger className="mt-1 h-9">
+                              <SelectValue />
+                            </SelectTrigger>
+                            <SelectContent>
+                              {years.map((year) => (
+                                <SelectItem key={year} value={String(year)}>
+                                  {year}
+                                </SelectItem>
+                              ))}
+                            </SelectContent>
+                          </Select>
+                        </div>
+                        <div className="w-28">
+                          <Label className="text-[10px] uppercase tracking-wider text-muted-foreground">
+                            Ano final
+                          </Label>
+                          <Select
+                            value={String(selection.yearEnd)}
+                            onValueChange={(value) => {
+                              const newEnd = parseInt(value, 10);
+                              updateSelection(model.id, (item) => ({
+                                ...item,
+                                year: item.year > newEnd ? newEnd : item.year,
+                                yearEnd: newEnd,
+                              }));
+                            }}
+                          >
+                            <SelectTrigger className="mt-1 h-9">
+                              <SelectValue />
+                            </SelectTrigger>
+                            <SelectContent>
+                              {years
+                                .filter((year) => year >= selection.year)
+                                .map((year) => (
+                                  <SelectItem key={year} value={String(year)}>
+                                    {year}
+                                  </SelectItem>
+                                ))}
+                            </SelectContent>
+                          </Select>
+                        </div>
                         <label className="flex items-center gap-2 text-xs cursor-pointer shrink-0 pb-1">
                           <input
                             type="checkbox"
@@ -212,7 +268,7 @@ export function ProductCompatibilitySection({
                               } else {
                                 updateSelection(model.id, (item) => ({
                                   ...item,
-                                  ...getDefaultCompatibilityYears(model),
+                                  ...getCurrentToLatestCompatibilityYears(model),
                                 }));
                               }
                             }}
@@ -220,74 +276,6 @@ export function ProductCompatibilitySection({
                           />
                           Todos os anos
                         </label>
-
-                        {!allYearsSelected && (
-                          <>
-                            <div className="w-28">
-                              <Label className="text-[10px] uppercase tracking-wider text-muted-foreground">
-                                Ano inicial
-                              </Label>
-                              <Select
-                                value={String(selection.year)}
-                                onValueChange={(value) => {
-                                  const newStart = parseInt(value, 10);
-                                  updateSelection(model.id, (item) => ({
-                                    ...item,
-                                    year: newStart,
-                                    yearEnd: item.yearEnd < newStart ? newStart : item.yearEnd,
-                                  }));
-                                }}
-                              >
-                                <SelectTrigger className="mt-1 h-9">
-                                  <SelectValue />
-                                </SelectTrigger>
-                                <SelectContent>
-                                  {years.map((year) => (
-                                    <SelectItem key={year} value={String(year)}>
-                                      {year}
-                                    </SelectItem>
-                                  ))}
-                                </SelectContent>
-                              </Select>
-                            </div>
-                            <div className="w-28">
-                              <Label className="text-[10px] uppercase tracking-wider text-muted-foreground">
-                                Ano final
-                              </Label>
-                              <Select
-                                value={String(selection.yearEnd)}
-                                onValueChange={(value) => {
-                                  const newEnd = parseInt(value, 10);
-                                  updateSelection(model.id, (item) => ({
-                                    ...item,
-                                    year: item.year > newEnd ? newEnd : item.year,
-                                    yearEnd: newEnd,
-                                  }));
-                                }}
-                              >
-                                <SelectTrigger className="mt-1 h-9">
-                                  <SelectValue />
-                                </SelectTrigger>
-                                <SelectContent>
-                                  {years
-                                    .filter((year) => year >= selection.year)
-                                    .map((year) => (
-                                      <SelectItem key={year} value={String(year)}>
-                                        {year}
-                                      </SelectItem>
-                                    ))}
-                                </SelectContent>
-                              </Select>
-                            </div>
-                          </>
-                        )}
-
-                        {allYearsSelected && (
-                          <span className="text-xs text-muted-foreground pb-1">
-                            {years[years.length - 1]} — {years[0]} (todos os anos de
-                            fabricação)
-                          </span>
-                        )}
                       </div>
                     )}
                   </div>
