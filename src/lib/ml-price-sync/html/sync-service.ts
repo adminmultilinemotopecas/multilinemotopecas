@@ -10,6 +10,7 @@ import {
 } from "@/lib/ml-price-sync/price-sync-service";
 import {
   resolveProductSyncUrl,
+  extractMercadoLivreItemIdFromUrl,
 } from "@/lib/ml-price-sync/url-validator";
 import type { price_sync_status } from "@prisma/client";
 import type { Prisma } from "@prisma/client";
@@ -482,9 +483,14 @@ export async function syncMercadoLivrePrice(
       status = "blocked";
       message = block.message ?? BLOCKED_MESSAGE;
     } else {
+      const syncItemId =
+        product.mercado_livre_id ??
+        extractMercadoLivreItemIdFromUrl(fetched.productPageUrl ?? "") ??
+        extractMercadoLivreItemIdFromUrl(sourceUrl);
+
       const extracted = extractMercadoLivrePrice(fetched.html, {
         preferSocial: fetched.usedSocialFallback || !fetched.productPageUrl,
-        mercadoLivreId: product.mercado_livre_id,
+        mercadoLivreId: syncItemId,
       });
 
       if (extracted.price == null) {

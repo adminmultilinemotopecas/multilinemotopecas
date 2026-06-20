@@ -260,6 +260,9 @@
 
       if (/antes/i.test(label)) originalPrice = value;
       if (/agora/i.test(label)) currentPrice = value;
+      if (/^\d/.test(label) && currentPrice == null && !/antes/i.test(label)) {
+        currentPrice = value;
+      }
     });
 
     if (
@@ -272,6 +275,26 @@
     }
 
     return null;
+  }
+
+  function extractPricesFromCard(cardRoot, jsonLdProducts) {
+    const priceRoot =
+      cardRoot.querySelector(".poly-price") ||
+      cardRoot.querySelector(".poly-component__price") ||
+      cardRoot;
+
+    const ariaPrices = extractPricesFromAriaLabels(priceRoot);
+    if (ariaPrices) return ariaPrices;
+
+    const currentBlock = cardRoot.querySelector(".poly-price__current .andes-money-amount");
+    if (currentBlock) {
+      const value = extractMoneyAmount(currentBlock);
+      if (value != null) {
+        return { price: value, promotionalPrice: null };
+      }
+    }
+
+    return extractPrices(jsonLdProducts);
   }
 
   function extractPrices(jsonLdProducts) {
@@ -758,7 +781,7 @@
       title = cleanText(titleNode?.textContent);
     }
 
-    let prices = extractPrices(jsonLdProducts);
+    let prices = extractPricesFromCard(cardRoot, jsonLdProducts);
     if (prices.price == null && prices.promotionalPrice == null) {
       const ariaPrices = extractPricesFromAriaLabels(cardRoot);
       if (ariaPrices) {

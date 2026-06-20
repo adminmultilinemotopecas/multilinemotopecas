@@ -76,6 +76,29 @@ export function normalizeSyncUrl(url: string): string {
   return parsed.toString();
 }
 
+export function extractMercadoLivreItemIdFromUrl(url: string): string | null {
+  if (!url?.trim()) return null;
+
+  const patterns = [
+    /[?&](?:item_id|wid)(?:%3A|=)(MLB\d+)/i,
+    /item_id(?:%3A|:)(MLB\d+)/i,
+    /\/(?:up\/)?MLBU?-?(\d{8,})/i,
+    /\/MLB-?(\d{8,})/i,
+  ];
+
+  for (const pattern of patterns) {
+    const match = url.match(pattern);
+    const raw = match?.[1];
+    if (!raw) continue;
+
+    const normalized = raw.toUpperCase();
+    if (/^MLB\d+$/.test(normalized)) return normalized;
+    if (/^\d+$/.test(normalized)) return `MLB${normalized}`;
+  }
+
+  return null;
+}
+
 export function assertSafeMercadoLivreUrl(url: string): void {
   let parsed: URL;
   try {

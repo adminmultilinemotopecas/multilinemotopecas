@@ -101,44 +101,96 @@ function readOffersPrice(
   return null;
 }
 
-export function extractPricesFromSocialPage(html: string): {
-  price: number | null;
-  promotionalPrice: number | null;
+function extractPrimaryAffiliateCardHtml(
+  html: string,
+  mercadoLivreId?: string | null
+): string {
+  if (mercadoLivreId) {
+    const numericId = mercadoLivreId.replace(/^MLB-?/i, "");
+    const marker = html.search(
+      new RegExp(
+        `(?:item_id(?:%3A|:)|wid=)MLB${numericId}|MLB-?${numericId}`,
+        "i"
+      )
+    );
+
+    if (marker >= 0) {
+      const cardStart = html.lastIndexOf('class="poly-card', marker);
+      const start = cardStart >= 0 ? cardStart : marker;
+      const slice = html.slice(start, start + 7000);
+      const outra = slice.search(/outra op[cç][aã]o de compra/i);
+      return outra > 0 ? slice.slice(0, outra) : slice;
+    }
+  }
+
+  const affiliateMarker = html.search(/source=affiliate-profile|reco_item_pos=0/i);
+  if (affiliateMarker >= 0) {
+    const cardStart = html.lastIndexOf('class="poly-card', affiliateMarker);
+    const start = cardStart >= 0 ? cardStart : html.search(/poly-card|social-post/i);
+    if (start >= 0) {
+      const slice = html.slice(start, start + 7000);
+      const outra = slice.search(/outra op[cç][aã]o de compra/i);
+      return outra > 0 ? slice.slice(0, outra) : slice;
+    }
+  }
+
+  return extractPrimarySocialCardHtml(html);
+}
+
+function extractPriceFromPrimaryCurrentBlock(scope: string): {
+  originalPrice: number | null;
+  currentPrice: number | null;
 } {
-  const scope = extractPrimarySocialCardHtml(html);
+  const currentBlockMatch = scope.match(
+    /poly-price__current[\s\S]*?(?=poly-price__installments|poly-component__price|<\/a>\s*<\/div>\s*<div class="poly-card)/i
+  );
+  const block = currentBlockMatch?.[0] ?? scope;
+
   let originalPrice: number | null = null;
   let currentPrice: number | null = null;
 
-  for (const match of scope.matchAll(/aria-label=["']([^"']+)["']/gi)) {
-    const label = match[1];
-    const value = parseMercadoLivreMoneyLabel(label);
-    if (value == null) continue;
-
-    if (/antes/i.test(label)) originalPrice = value;
-    if (/agora/i.test(label)) currentPrice = value;
+  const previous = block.match(
+    /andes-money-amount--previous[\s\S]{0,400}?aria-label=["']([^"']+)["']/i
+  );
+  if (previous) {
+    originalPrice = parseMercadoLivreMoneyLabel(previous[1]);
   }
 
-  if (currentPrice == null || originalPrice == null) {
-    const previousMatch = scope.match(
-      /andes-money-amount--previous[\s\S]{0,700}?andes-money-amount__fraction[^>]*>([\d.]+)[\s\S]{0,180}?andes-money-amount__cents[^>]*>(\d+)/i
+  const currentAria =
+    block.match(
+      /andes-money-amount--cents-superscript[\s\S]{0,250}?aria-label=["']([^"']+)["']/i
+    ) ??
+    block.match(
+      /aria-label=["']([^"']+)["'][\s\S]{0,180}?andes-money-amount--cents-superscript/i
     );
-    const currentMatch = scope.match(
-      /andes-money-amount--cents-superscript[\s\S]{0,700}?andes-money-amount__fraction[^>]*>([\d.]+)[\s\S]{0,180}?andes-money-amount__cents[^>]*>(\d+)/i
-    );
+  if (currentAria) {
+    currentPrice = parseMercadoLivreMoneyLabel(currentAria[1]);
+  }
 
-    if (previousMatch) {
-      originalPrice =
-        normalizePrice(`${previousMatch[1].replace(/\./g, "")}.${previousMatch[2]}`) ??
-        originalPrice;
-    }
-
-    if (currentMatch) {
-      currentPrice =
-        normalizePrice(`${currentMatch[1].replace(/\./g, "")}.${currentMatch[2]}`) ??
-        currentPrice;
+  if (currentPrice == null) {
+    const fraction = block.match(/andes-money-amount__fraction[^>]*>([\d.]+)/i);
+    const cents = block.match(/andes-money-amount__cents[^>]*>(\d+)/i);
+    if (fraction) {
+      currentPrice = normalizePrice(
+        cents
+          ? `${fraction[1].replace(/\./g, "")}.${cents[1]}`
+          : fraction[1].replace(/\./g, "")
+      );
     }
   }
 
+  return { originalPrice, currentPrice };
+}
+
+export function extractPricesFromSocialPage(
+  html: string,
+  options?: { mercadoLivreId?: string | null }
+): {
+  price: number | null;
+  promotionalPrice: number | null;
+} {
+  const scope = extractPrimaryAffiliateCardHtml(html, options?.mercadoLivreId);
+  const { originalPrice, currentPrice } = extractPriceFromPrimaryCurrentBlock(scope);
   return normalizePricePair({ originalPrice, currentPrice });
 }
 
@@ -227,17 +279,7 @@ export function extractPricesNearMercadoLivreId(
     return { price: null, promotionalPrice: null };
   }
 
-  const numericId = mercadoLivreId.replace(/^MLB-?/i, "");
-  if (!numericId) return { price: null, promotionalPrice: null };
-
-  const start = html.search(new RegExp(`MLB-?${numericId}`, "i"));
-  if (start === -1) return { price: null, promotionalPrice: null };
-
-  const scope = html.slice(start, start + 12000);
-  const altIdx = scope.search(/outra op[cç][aã]o de compra/i);
-  const cardScope = altIdx > 0 ? scope.slice(0, altIdx) : scope;
-
-  return extractPricesFromSocialPage(cardScope);
+  return extractPricesFromSocialPage(html, { mercadoLivreId });
 }
 
 /** @deprecated Use extractPricesNearMercadoLivreId */
@@ -287,7 +329,9 @@ export function extractMercadoLivrePrice(
   }
 
   if (options?.preferSocial) {
-    const socialPrices = extractPricesFromSocialPage(html);
+    const socialPrices = extractPricesFromSocialPage(html, {
+      mercadoLivreId: options.mercadoLivreId,
+    });
     if (socialPrices.price != null) {
       return { ...socialPrices, source: "social_profile" };
     }
@@ -303,7 +347,9 @@ export function extractMercadoLivrePrice(
     return { price: metaPrice, promotionalPrice: null, source: "meta_tags" };
   }
 
-  const socialPrices = extractPricesFromSocialPage(html);
+  const socialPrices = extractPricesFromSocialPage(html, {
+    mercadoLivreId: options?.mercadoLivreId,
+  });
   if (socialPrices.price != null) {
     return { ...socialPrices, source: "social_profile" };
   }
