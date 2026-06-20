@@ -120,7 +120,7 @@ export function ProductForm({
     ml_source_url: product?.ml_source_url || "",
     price_sync_enabled: product?.price_sync_enabled ?? true,
     listing_status: product?.listing_status || "not_listed",
-    status: product?.status || "draft",
+    status: product?.ml_verification_pending ? "active" : product?.status || "draft",
     is_featured: product?.is_featured || false,
     is_bestseller: product?.is_bestseller || false,
     is_new: product?.is_new || false,
@@ -335,8 +335,8 @@ export function ProductForm({
             </span>
           )}
           <span className="block mt-2">
-            Corrija o link, salve e use <strong>Verificar</strong> no Catálogo do
-            Site para reativar o produto.
+            Corrija os dados do produto e clique em <strong>Salvar</strong> para
+            reativá-lo no site.
           </span>
         </div>
       )}

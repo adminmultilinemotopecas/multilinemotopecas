@@ -272,7 +272,7 @@ function extractPolyCardContent(html: string): PolyCardExtraction | null {
   return { fullText, displayTitle };
 }
 
-function extractPageProductContent(html: string): PolyCardExtraction | null {
+export function extractPageProductContent(html: string): PolyCardExtraction | null {
   const polyCard = extractPolyCardContent(html);
   if (polyCard) {
     return polyCard;

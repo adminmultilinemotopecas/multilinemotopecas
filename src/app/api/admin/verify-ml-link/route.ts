@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { requireAdmin } from "@/lib/admin-auth";
-import { verifyMercadoLivreListing } from "@/lib/mercado-livre-verify";
 import { applyVerificationToProductDb } from "@/lib/apply-ml-verification";
+import { verifyMercadoLivreListingViaAffiliate } from "@/lib/ml-price-sync/html/verify-listing";
 import { prisma } from "@/lib/prisma";
 
 export const runtime = "nodejs";
@@ -33,6 +33,7 @@ export async function POST(request: NextRequest) {
         id: true,
         name: true,
         mercado_livre_url: true,
+        ml_source_url: true,
         mercado_livre_id: true,
       },
     });
@@ -44,11 +45,12 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    const result = await verifyMercadoLivreListing(
-      product.mercado_livre_url,
-      product.name,
-      product.mercado_livre_id
-    );
+    const result = await verifyMercadoLivreListingViaAffiliate({
+      mercado_livre_url: product.mercado_livre_url,
+      ml_source_url: product.ml_source_url,
+      productName: product.name,
+      mercado_livre_id: product.mercado_livre_id,
+    });
 
     let productDeactivated = false;
     let productReactivated = false;

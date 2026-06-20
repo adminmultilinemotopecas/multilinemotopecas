@@ -101,7 +101,7 @@ function readOffersPrice(
   return null;
 }
 
-function extractPrimaryAffiliateCardHtml(
+export function extractPrimaryAffiliateCardHtml(
   html: string,
   mercadoLivreId?: string | null
 ): string {

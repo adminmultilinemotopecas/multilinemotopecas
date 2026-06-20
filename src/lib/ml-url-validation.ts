@@ -1,15 +1,16 @@
 import {
   extractMercadoLivreId,
   isMercadoLivreUrl,
-  verifyMercadoLivreListing,
   compareProductNames,
   type MlVerificationResult,
 } from "@/lib/mercado-livre-verify";
+import { verifyMercadoLivreListingViaAffiliate } from "@/lib/ml-price-sync/html/verify-listing";
 import type { MlBrowserSession } from "@/lib/ml-price-sync/ml-browser-session";
 import {
   assertSafeMercadoLivreUrl,
   isMercadoLivreProductPageUrl,
   normalizeSyncUrl,
+  resolveProductSyncUrl,
 } from "@/lib/ml-price-sync/url-validator";
 
 export class MlValidationError extends Error {
@@ -184,11 +185,14 @@ export async function validateAndNormalizeMlUrls(input: {
     return { ok: true, normalized };
   }
 
-  const verifyUrl =
-    normalized.ml_source_url ??
-    (normalized.mercado_livre_url && isMercadoLivreProductPageUrl(normalized.mercado_livre_url)
-      ? normalized.mercado_livre_url
-      : normalized.mercado_livre_url);
+  const verifyUrl = resolveProductSyncUrl({
+    mercado_livre_url: normalized.mercado_livre_url,
+    ml_source_url: normalized.ml_source_url,
+  });
+
+  if (!verifyUrl) {
+    return { ok: true, normalized };
+  }
 
   if (input.browserSession) {
     const checkedAt = new Date().toISOString();
@@ -242,17 +246,12 @@ export async function validateAndNormalizeMlUrls(input: {
     }
   }
 
-  const verification = await verifyMercadoLivreListing(
-    verifyUrl,
-    input.name,
-    normalized.mercado_livre_id,
-    input.browserSession
-      ? {
-          cookieHeader: input.browserSession.cookieHeader,
-          userAgent: input.browserSession.userAgent,
-        }
-      : undefined
-  );
+  const verification = await verifyMercadoLivreListingViaAffiliate({
+    mercado_livre_url: normalized.mercado_livre_url,
+    ml_source_url: normalized.ml_source_url,
+    productName: input.name,
+    mercado_livre_id: normalized.mercado_livre_id,
+  });
 
   if (verification.status === "blocked") {
     return {

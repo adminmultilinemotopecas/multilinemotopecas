@@ -56,8 +56,13 @@ export interface SaveProductInput {
   skip_ml_network_verify?: boolean;
 }
 
-function buildProductData(input: SaveProductInput, slug: string, isNew: boolean) {
-  return {
+function buildProductData(
+  input: SaveProductInput,
+  slug: string,
+  isNew: boolean,
+  options?: { clearPendingVerification?: boolean }
+) {
+  const data = {
     name: input.name.trim(),
     slug,
     sku: input.sku.trim(),
@@ -90,6 +95,18 @@ function buildProductData(input: SaveProductInput, slug: string, isNew: boolean)
     is_launch: input.is_launch ?? false,
     is_recommended: input.is_recommended ?? false,
   };
+
+  if (options?.clearPendingVerification) {
+    return {
+      ...data,
+      ml_verification_pending: false,
+      ml_verified_at: new Date(),
+      ml_verification_message: "Revisado e aprovado no cadastro.",
+      status: input.status === "inactive" ? "inactive" : "active",
+    };
+  }
+
+  return data;
 }
 
 export async function listAdminProducts() {
@@ -138,12 +155,15 @@ export async function saveProduct(
           mercado_livre_url: true,
           ml_source_url: true,
           mercado_livre_id: true,
+          ml_verification_pending: true,
         },
       })
     : null;
 
+  const wasPendingVerification = existing?.ml_verification_pending === true;
+
   const browserSession =
-    adminUserId && !input.skip_ml_network_verify
+    adminUserId && !input.skip_ml_network_verify && !wasPendingVerification
       ? getMlBrowserSession(adminUserId)
       : null;
 
@@ -153,7 +173,8 @@ export async function saveProduct(
     ml_source_url: input.ml_source_url,
     mercado_livre_id: input.mercado_livre_id,
     existing,
-    skipNetworkVerify: input.skip_ml_network_verify === true,
+    skipNetworkVerify:
+      input.skip_ml_network_verify === true || wasPendingVerification,
     browserSession,
   });
 
@@ -180,7 +201,9 @@ export async function saveProduct(
     const product = productId
       ? await prisma.products.update({
           where: { id: productId },
-          data: buildProductData(enrichedInput, slug, false),
+          data: buildProductData(enrichedInput, slug, false, {
+            clearPendingVerification: wasPendingVerification,
+          }),
         })
       : await prisma.products.create({
           data: buildProductData(enrichedInput, slug, true),
