@@ -12,7 +12,9 @@ import { getProductBySlug, getRelatedProducts } from "@/lib/queries/products";
 import { generateProductMetadata, generateProductJsonLd, generateBreadcrumbJsonLd } from "@/lib/seo";
 import { formatPrice, getDisplayPrice, calculateDiscount } from "@/lib/utils";
 import { SITE_CONFIG } from "@/lib/constants";
+import { ProductDescriptionContent } from "@/components/products/product-description-content";
 import { ProductViewTracker } from "@/components/products/product-view-tracker";
+import { stripProductDescriptionMarkup } from "@/lib/product-description";
 
 interface PageProps {
   params: Promise<{ slug: string }>;
@@ -86,7 +88,12 @@ export default async function ProductPage({ params }: PageProps) {
                 </span>
               )}
             </div>
-            {product.short_description && <p className="text-muted-foreground mb-6">{product.short_description}</p>}
+            {product.short_description && (
+              <ProductDescriptionContent
+                content={product.short_description}
+                className="mb-6 text-base"
+              />
+            )}
 
             <div className="rounded-2xl border border-border/60 bg-card p-6 mb-6 ring-1 ring-primary/10">
               <div className="mb-4">
@@ -112,7 +119,14 @@ export default async function ProductPage({ params }: PageProps) {
 
             <div className="mb-6">
               <p className="text-sm font-medium mb-2">Compartilhar</p>
-              <ShareButtons productId={product.id} productName={product.name} slug={product.slug} description={product.short_description || product.name} />
+              <ShareButtons
+                productId={product.id}
+                productName={product.name}
+                slug={product.slug}
+                description={
+                  stripProductDescriptionMarkup(product.short_description || product.name)
+                }
+              />
             </div>
           </div>
         </div>
@@ -124,7 +138,7 @@ export default async function ProductPage({ params }: PageProps) {
             {product.full_description && (
               <section>
                 <h2 className="text-xl font-bold mb-4">Descrição</h2>
-                <div className="prose prose-sm max-w-none text-muted-foreground" dangerouslySetInnerHTML={{ __html: product.full_description }} />
+                <ProductDescriptionContent content={product.full_description} />
               </section>
             )}
             {product.technical_specs && product.technical_specs.length > 0 && (

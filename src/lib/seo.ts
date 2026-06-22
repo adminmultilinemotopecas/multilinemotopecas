@@ -1,5 +1,6 @@
 import { Metadata } from "next";
 import { SITE_CONFIG } from "./constants";
+import { stripProductDescriptionMarkup } from "./product-description";
 import type { Product, FAQ, Brand, Category } from "@/types/database";
 
 export function generateSiteMetadata(overrides?: Partial<Metadata>): Metadata {
@@ -54,7 +55,7 @@ export function generateProductMetadata(product: Product): Metadata {
   const image = product.images?.find((i) => i.is_primary)?.url || product.images?.[0]?.url;
   const price = product.promotional_price || product.price;
   const description =
-    product.short_description ||
+    stripProductDescriptionMarkup(product.short_description || "") ||
     `Compre ${product.name} com segurança no Mercado Livre. ${SITE_CONFIG.name}`;
 
   return {
@@ -108,7 +109,10 @@ export function generateProductJsonLd(product: Product) {
     "@context": "https://schema.org",
     "@type": "Product",
     name: product.name,
-    description: product.short_description || product.full_description,
+    description:
+      stripProductDescriptionMarkup(
+        product.short_description || product.full_description || ""
+      ) || undefined,
     sku: product.sku,
     mpn: product.internal_code,
     image: product.images?.map((i) => i.url) || [],

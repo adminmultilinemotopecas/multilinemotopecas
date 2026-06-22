@@ -7,6 +7,7 @@ import {
 } from "@/lib/ml-url-validation";
 import { getMlBrowserSession } from "@/lib/ml-price-sync/ml-browser-session";
 import { slugify } from "@/lib/utils";
+import { normalizeProductDescription } from "@/lib/product-description";
 import type { ProductStatus, ListingStatus } from "@/types/database";
 
 export interface ProductImageInput {
@@ -81,8 +82,8 @@ function buildProductData(
     stock: input.stock ?? 0,
     weight: input.weight ?? null,
     dimensions: input.dimensions?.trim() || null,
-    short_description: input.short_description?.trim() || null,
-    full_description: input.full_description?.trim() || null,
+    short_description: normalizeProductDescription(input.short_description),
+    full_description: normalizeProductDescription(input.full_description),
     applications: input.applications?.trim() || null,
     compatibilities: input.compatibilities?.trim() || null,
     product_references: input.product_references?.trim() || null,

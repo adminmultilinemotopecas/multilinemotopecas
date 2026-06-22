@@ -24,6 +24,8 @@ import { ArrowDown, ArrowUp, ImagePlus, Loader2, Save, Trash2 } from "lucide-rea
 import { ProductPriceSyncButton } from "@/components/admin/price-sync-controls";
 import { MlBrowserValidationDialog } from "@/components/admin/ml-browser-validation-dialog";
 import { ProductCompatibilitySection } from "@/components/admin/product-compatibility-section";
+import { FormattedDescriptionField } from "@/components/admin/formatted-description-field";
+import { normalizeProductDescription } from "@/lib/product-description";
 
 interface ProductFormProps {
   product?: Product;
@@ -243,8 +245,8 @@ export function ProductForm({
       stock: parseInt(form.stock, 10) || 0,
       weight: form.weight ? parseFloat(form.weight) : null,
       dimensions: form.dimensions.trim() || null,
-      short_description: form.short_description.trim() || null,
-      full_description: form.full_description.trim() || null,
+      short_description: normalizeProductDescription(form.short_description),
+      full_description: normalizeProductDescription(form.full_description),
       applications: form.applications.trim() || null,
       compatibilities: form.compatibilities.trim() || null,
       product_references: form.product_references.trim() || null,
@@ -564,22 +566,22 @@ export function ProductForm({
                 <CardTitle>Descrições</CardTitle>
               </CardHeader>
               <CardContent className="space-y-4">
-                <div>
-                  <Label>Descrição curta</Label>
-                  <textarea
-                    value={form.short_description}
-                    onChange={(e) => updateField("short_description", e.target.value)}
-                    className="mt-1 flex w-full rounded-md border border-input bg-background px-3 py-2 text-sm min-h-[72px]"
-                  />
-                </div>
-                <div>
-                  <Label>Descrição completa</Label>
-                  <textarea
-                    value={form.full_description}
-                    onChange={(e) => updateField("full_description", e.target.value)}
-                    className="mt-1 flex w-full rounded-md border border-input bg-background px-3 py-2 text-sm min-h-[120px]"
-                  />
-                </div>
+                <FormattedDescriptionField
+                  id="short_description"
+                  label="Descrição curta"
+                  value={form.short_description}
+                  onChange={(value) => updateField("short_description", value)}
+                  minHeightClass="min-h-[72px]"
+                  placeholder="Resumo do produto..."
+                />
+                <FormattedDescriptionField
+                  id="full_description"
+                  label="Descrição completa"
+                  value={form.full_description}
+                  onChange={(value) => updateField("full_description", value)}
+                  minHeightClass="min-h-[160px]"
+                  placeholder="Descrição detalhada do produto..."
+                />
                 <div>
                   <Label>Aplicações</Label>
                   <textarea
