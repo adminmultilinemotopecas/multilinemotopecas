@@ -14,6 +14,9 @@ import {
 } from "@/lib/ml-price-sync/url-validator";
 import type { price_sync_status } from "@prisma/client";
 import type { Prisma } from "@prisma/client";
+import {
+  buildPriceSyncProductUpdate,
+} from "@/lib/ml-price-sync/catalog-visibility";
 
 const MAX_PRICE_CHANGE_PERCENT = 30;
 const BLOCKED_MESSAGE = "Mercado Livre bloqueou ou exigiu verificação.";
@@ -162,6 +165,7 @@ async function loadProductForSync(productId: string) {
       mercado_livre_url: true,
       mercado_livre_id: true,
       price_sync_enabled: true,
+      ml_verification_pending: true,
     },
   });
 
@@ -190,33 +194,26 @@ async function persistProductSyncState(input: {
   extractionSource: string | null;
   triggerSource: "manual" | "cron";
   checkedAt: string;
+  mlVerificationPending?: boolean;
 }) {
-  const checkedAtDate = new Date(input.checkedAt);
+  const productUpdate = buildPriceSyncProductUpdate({
+    status: input.status,
+    message: input.message,
+    updated: input.updated,
+    lastSyncedPrice: input.lastSyncedPrice,
+    mlVerificationPending: input.mlVerificationPending,
+    checkedAt: input.checkedAt,
+    newPrice: input.newPrice,
+    newPromotionalPrice: input.newPromotionalPrice,
+  });
 
-  if (input.updated && input.newPrice != null) {
-    await prisma.products.update({
-      where: { id: input.productId },
-      data: {
-        price: input.newPrice,
-        promotional_price: input.newPromotionalPrice,
-        is_promotion: input.newPromotionalPrice != null,
-        last_price_sync_at: checkedAtDate,
-        last_price_sync_status: mapDbStatus(input.status),
-        last_price_sync_error: null,
-        last_synced_price: input.lastSyncedPrice,
-      },
-    });
-  } else {
-    await prisma.products.update({
-      where: { id: input.productId },
-      data: {
-        last_price_sync_at: checkedAtDate,
-        last_price_sync_status: mapDbStatus(input.status),
-        last_price_sync_error: input.status === "success" ? null : input.message,
-        last_synced_price: input.lastSyncedPrice,
-      },
-    });
-  }
+  await prisma.products.update({
+    where: { id: input.productId },
+    data: {
+      ...productUpdate,
+      last_price_sync_status: mapDbStatus(input.status),
+    },
+  });
 
   await prisma.price_sync_logs.create({
     data: {
@@ -280,6 +277,7 @@ export async function applyMercadoLivreBrowserPrice(
       extractionSource: null,
       triggerSource,
       checkedAt,
+      mlVerificationPending: product.ml_verification_pending,
     });
 
     return result;
@@ -323,6 +321,7 @@ export async function applyMercadoLivreBrowserPrice(
       extractionSource: null,
       triggerSource,
       checkedAt,
+      mlVerificationPending: product.ml_verification_pending,
     });
 
     return result;
@@ -360,6 +359,7 @@ export async function applyMercadoLivreBrowserPrice(
     extractionSource: "browser_session",
     triggerSource,
     checkedAt,
+    mlVerificationPending: product.ml_verification_pending,
   });
 
   return {
@@ -417,6 +417,7 @@ export async function syncMercadoLivrePrice(
       extractionSource: null,
       triggerSource,
       checkedAt,
+      mlVerificationPending: product.ml_verification_pending,
     });
 
     return result;
@@ -458,6 +459,7 @@ export async function syncMercadoLivrePrice(
       extractionSource: null,
       triggerSource,
       checkedAt,
+      mlVerificationPending: product.ml_verification_pending,
     });
 
     return result;
@@ -554,6 +556,7 @@ export async function syncMercadoLivrePrice(
     extractionSource,
     triggerSource,
     checkedAt,
+    mlVerificationPending: product.ml_verification_pending,
   });
 
   return {

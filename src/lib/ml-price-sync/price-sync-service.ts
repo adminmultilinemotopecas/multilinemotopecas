@@ -11,6 +11,9 @@ import type {
   ProductSyncCandidate,
 } from "@/lib/ml-price-sync/types";
 import type { Prisma, price_sync_status } from "@prisma/client";
+import {
+  buildPriceSyncProductUpdate,
+} from "@/lib/ml-price-sync/catalog-visibility";
 
 function getMinConfidence(): number {
   const raw = process.env.PRICE_SYNC_MIN_CONFIDENCE;
@@ -84,6 +87,7 @@ export async function syncProductPrice(input: {
       ml_source_url: true,
       mercado_livre_url: true,
       price_sync_enabled: true,
+      ml_verification_pending: true,
     },
   });
 
@@ -150,6 +154,21 @@ export async function syncProductPrice(input: {
       oldPromotionalPrice,
       updated: false,
       triggerSource: input.triggerSource ?? "manual",
+    });
+
+    await prisma.products.update({
+      where: { id: candidate.id },
+      data: {
+        ...buildPriceSyncProductUpdate({
+          status: scrape.status,
+          message: scrape.error,
+          updated: false,
+          lastSyncedPrice: null,
+          mlVerificationPending: product.ml_verification_pending,
+          checkedAt: scrape.checkedAt,
+        }),
+        last_price_sync_status: mapStatus(scrape.status),
+      },
     });
 
     return {
@@ -265,30 +284,26 @@ export async function syncProductPrice(input: {
 
   const finalScrape = { ...scrape, status: finalStatus, error: message };
 
-  if (updated && newPrice != null) {
-    await prisma.products.update({
-      where: { id: candidate.id },
-      data: {
-        price: newPrice,
-        promotional_price: newPromotionalPrice,
-        is_promotion: newPromotionalPrice != null,
-        last_price_sync_at: new Date(scrape.checkedAt),
-        last_price_sync_status: mapStatus(finalStatus),
-        last_price_sync_error: null,
-        last_synced_price: newPromotionalPrice ?? newPrice,
-      },
-    });
-  } else {
-    await prisma.products.update({
-      where: { id: candidate.id },
-      data: {
-        last_price_sync_at: new Date(scrape.checkedAt),
-        last_price_sync_status: mapStatus(finalStatus),
-        last_price_sync_error: message,
-        last_synced_price: scrape.price,
-      },
-    });
-  }
+  const lastSyncedPrice = updated
+    ? newPromotionalPrice ?? newPrice
+    : scrape.price;
+
+  await prisma.products.update({
+    where: { id: candidate.id },
+    data: {
+      ...buildPriceSyncProductUpdate({
+        status: finalStatus,
+        message,
+        updated,
+        lastSyncedPrice,
+        mlVerificationPending: product.ml_verification_pending,
+        checkedAt: scrape.checkedAt,
+        newPrice,
+        newPromotionalPrice,
+      }),
+      last_price_sync_status: mapStatus(finalStatus),
+    },
+  });
 
   await persistSyncResult({
     productId: candidate.id,
