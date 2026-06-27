@@ -8,7 +8,8 @@ import { CatalogSort } from "@/components/catalog/catalog-sort";
 import { JsonLd } from "@/components/seo/json-ld";
 import { getBrandBySlug } from "@/lib/queries/catalog";
 import { getProducts } from "@/lib/queries/products";
-import { generateBrandMetadata, generateBreadcrumbJsonLd } from "@/lib/seo";
+import { generateBrandMetadata, generateBreadcrumbJsonLd, hasPaginatedListingFilters, robotsNoIndexFollow } from "@/lib/seo";
+import type { Metadata } from "next";
 import { SITE_CONFIG } from "@/lib/constants";
 import type { ProductSort } from "@/types/database";
 
@@ -19,11 +20,17 @@ interface PageProps {
 
 export const revalidate = 3600;
 
-export async function generateMetadata({ params }: PageProps) {
+export async function generateMetadata({ params, searchParams }: PageProps): Promise<Metadata> {
   const { slug } = await params;
+  const sp = await searchParams;
   const brand = await getBrandBySlug(slug);
   if (!brand) return { title: "Marca não encontrada" };
-  return generateBrandMetadata(brand);
+
+  const base = generateBrandMetadata(brand);
+  if (hasPaginatedListingFilters(sp)) {
+    return { ...base, robots: robotsNoIndexFollow };
+  }
+  return base;
 }
 
 export default async function BrandPage({ params, searchParams }: PageProps) {

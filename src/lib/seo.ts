@@ -3,6 +3,42 @@ import { SITE_CONFIG } from "./constants";
 import { stripProductDescriptionMarkup } from "./product-description";
 import type { Product, FAQ, Brand, Category } from "@/types/database";
 
+export const robotsNoIndex: NonNullable<Metadata["robots"]> = {
+  index: false,
+  follow: false,
+  googleBot: { index: false, follow: false },
+};
+
+export const robotsNoIndexFollow: NonNullable<Metadata["robots"]> = {
+  index: false,
+  follow: true,
+  googleBot: { index: false, follow: true },
+};
+
+export function hasCatalogFilters(
+  params: Record<string, string | undefined>
+): boolean {
+  return Boolean(
+    (params.page && params.page !== "1") ||
+      (params.sort && params.sort !== "newest") ||
+      params.brand ||
+      params.category ||
+      params.subcategory ||
+      params.moto ||
+      params.ano ||
+      params.min_price ||
+      params.max_price ||
+      params.featured ||
+      params.q
+  );
+}
+
+export function hasPaginatedListingFilters(
+  params: Record<string, string | undefined>
+): boolean {
+  return Boolean((params.page && params.page !== "1") || (params.sort && params.sort !== "newest"));
+}
+
 export function generateSiteMetadata(overrides?: Partial<Metadata>): Metadata {
   return {
     metadataBase: new URL(SITE_CONFIG.url),

@@ -1,6 +1,12 @@
 import { AdminSidebar } from "@/components/admin/admin-sidebar";
+import type { Metadata } from "next";
+import { robotsNoIndex } from "@/lib/seo";
 
 export const dynamic = "force-dynamic";
+
+export const metadata: Metadata = {
+  robots: robotsNoIndex,
+};
 
 export default function AdminLayout({
   children,

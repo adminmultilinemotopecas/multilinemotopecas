@@ -7,7 +7,8 @@ import { CatalogSort } from "@/components/catalog/catalog-sort";
 import { JsonLd } from "@/components/seo/json-ld";
 import { getCategoryBySlug } from "@/lib/queries/catalog";
 import { getProducts } from "@/lib/queries/products";
-import { generateCategoryMetadata, generateBreadcrumbJsonLd } from "@/lib/seo";
+import { generateCategoryMetadata, generateBreadcrumbJsonLd, hasPaginatedListingFilters, robotsNoIndexFollow } from "@/lib/seo";
+import type { Metadata } from "next";
 import { SITE_CONFIG } from "@/lib/constants";
 import type { ProductSort } from "@/types/database";
 
@@ -18,11 +19,17 @@ interface PageProps {
 
 export const revalidate = 3600;
 
-export async function generateMetadata({ params }: PageProps) {
+export async function generateMetadata({ params, searchParams }: PageProps): Promise<Metadata> {
   const { slug } = await params;
+  const sp = await searchParams;
   const category = await getCategoryBySlug(slug);
   if (!category) return { title: "Categoria não encontrada" };
-  return generateCategoryMetadata(category);
+
+  const base = generateCategoryMetadata(category);
+  if (hasPaginatedListingFilters(sp)) {
+    return { ...base, robots: robotsNoIndexFollow };
+  }
+  return base;
 }
 
 export default async function CategoryPage({ params, searchParams }: PageProps) {

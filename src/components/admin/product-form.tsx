@@ -26,6 +26,12 @@ import { MlBrowserValidationDialog } from "@/components/admin/ml-browser-validat
 import { ProductCompatibilitySection } from "@/components/admin/product-compatibility-section";
 import { FormattedDescriptionField } from "@/components/admin/formatted-description-field";
 import { normalizeProductDescription } from "@/lib/product-description";
+import {
+  Accordion,
+  AccordionContent,
+  AccordionItem,
+  AccordionTrigger,
+} from "@/components/ui/accordion";
 
 interface ProductFormProps {
   product?: Product;
@@ -317,75 +323,80 @@ export function ProductForm({
 
   const subcategories = categories.flatMap((c) => c.children || []);
 
+  const highlightFields = [
+    { key: "is_featured", label: "Destaque" },
+    { key: "is_bestseller", label: "Mais vendido" },
+    { key: "is_new", label: "Novo" },
+    { key: "is_promotion", label: "Promoção" },
+    { key: "is_launch", label: "Lançamento" },
+    { key: "is_recommended", label: "Recomendado" },
+  ] as const;
+
   return (
     <>
-    <form onSubmit={handleSubmit} className="space-y-6">
+    <form onSubmit={handleSubmit} className="space-y-4">
       {error && (
-        <div className="rounded-lg border border-destructive/50 bg-destructive/10 px-4 py-3 text-sm text-destructive">
+        <div className="rounded-lg border border-destructive/50 bg-destructive/10 px-3 py-2 text-sm text-destructive">
           {error}
         </div>
       )}
 
       {product?.ml_verification_pending && (
-        <div className="rounded-lg border border-amber-500/30 bg-amber-500/10 px-4 py-3 text-sm text-amber-200">
-          <strong>Pendente de Verificação</strong> — este produto foi ocultado do
-          site porque o link do Mercado Livre não foi encontrado ou é inválido.
+        <div className="rounded-lg border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-sm text-amber-200">
+          <strong>Pendente de Verificação</strong> — produto oculto do site por link ML inválido.
           {product.ml_verification_message && (
             <span className="block mt-1 text-amber-200/80">
               {product.ml_verification_message}
             </span>
           )}
-          <span className="block mt-2">
-            Corrija os dados do produto e clique em <strong>Salvar</strong> para
-            reativá-lo no site.
+          <span className="block mt-1">
+            Corrija os dados e clique em <strong>Salvar</strong> para reativar.
           </span>
         </div>
       )}
 
-      <div className="grid xl:grid-cols-[minmax(0,1fr)_320px] gap-6 items-start">
-        <div className="space-y-6 min-w-0">
+      <div className="grid xl:grid-cols-[minmax(0,1fr)_240px] gap-4 items-start">
+        <div className="space-y-4 min-w-0">
           <Card>
-            <CardHeader>
-              <CardTitle>Cadastro rápido</CardTitle>
-              <p className="text-sm text-muted-foreground mt-1">
-                Preencha primeiro nome, preço e identificação — o restante pode vir depois.
-              </p>
+            <CardHeader className="py-3">
+              <CardTitle className="text-base">Identificação e preço</CardTitle>
             </CardHeader>
-            <CardContent className="space-y-4">
+            <CardContent className="space-y-3 pt-0">
               <div>
-                <Label>Nome *</Label>
+                <Label className="text-xs">Nome *</Label>
                 <Input
                   value={form.name}
                   onChange={(e) => updateField("name", e.target.value)}
                   required
-                  className="mt-1"
+                  className="mt-1 h-9"
                   placeholder="Nome do produto"
                 />
               </div>
-              <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
                 <div>
-                  <Label>SKU *</Label>
+                  <Label className="text-xs">SKU *</Label>
                   <Input
                     value={form.sku}
                     onChange={(e) => updateField("sku", e.target.value)}
                     required
-                    className="mt-1"
+                    className="mt-1 h-9"
                   />
                 </div>
                 <div>
-                  <Label>Código Interno</Label>
+                  <Label className="text-xs">Código interno</Label>
                   <Input
                     value={form.internal_code}
                     onChange={(e) => updateField("internal_code", e.target.value)}
                     readOnly={isNewProduct}
-                    className={cn("mt-1", isNewProduct && "bg-muted/50 cursor-default")}
+                    className={cn("mt-1 h-9", isNewProduct && "bg-muted/50 cursor-default")}
                     placeholder={isNewProduct ? "Gerando..." : undefined}
                   />
                 </div>
                 <div>
-                  <Label>Status</Label>
+                  <Label className="text-xs">Status</Label>
                   <Select value={form.status} onValueChange={(v) => updateField("status", v)}>
-                    <SelectTrigger className="mt-1">
+                    <SelectTrigger className="mt-1 h-9">
                       <SelectValue />
                     </SelectTrigger>
                     <SelectContent>
@@ -396,46 +407,139 @@ export function ProductForm({
                     </SelectContent>
                   </Select>
                 </div>
-              </div>
-              <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
                 <div>
-                  <Label>Preço *</Label>
+                  <Label className="text-xs">Estoque</Label>
+                  <Input
+                    type="number"
+                    value={form.stock}
+                    onChange={(e) => updateField("stock", e.target.value)}
+                    className="mt-1 h-9"
+                  />
+                </div>
+              </div>
+
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+                <div>
+                  <Label className="text-xs">Preço *</Label>
                   <Input
                     type="number"
                     step="0.01"
                     value={form.price}
                     onChange={(e) => updateField("price", e.target.value)}
                     required
-                    className="mt-1"
+                    className="mt-1 h-9"
                   />
                 </div>
                 <div>
-                  <Label>Preço Promocional</Label>
+                  <Label className="text-xs">Preço promocional</Label>
                   <Input
                     type="number"
                     step="0.01"
                     value={form.promotional_price}
                     onChange={(e) => updateField("promotional_price", e.target.value)}
-                    className="mt-1"
+                    className="mt-1 h-9"
                   />
                 </div>
                 <div>
-                  <Label>Estoque</Label>
+                  <Label className="text-xs">Peso (kg)</Label>
                   <Input
                     type="number"
-                    value={form.stock}
-                    onChange={(e) => updateField("stock", e.target.value)}
-                    className="mt-1"
+                    step="0.01"
+                    value={form.weight}
+                    onChange={(e) => updateField("weight", e.target.value)}
+                    className="mt-1 h-9"
+                  />
+                </div>
+                <div>
+                  <Label className="text-xs">Dimensões</Label>
+                  <Input
+                    value={form.dimensions}
+                    onChange={(e) => updateField("dimensions", e.target.value)}
+                    placeholder="L x A x P"
+                    className="mt-1 h-9"
                   />
                 </div>
               </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                <div>
+                  <Label className="text-xs">Marca</Label>
+                  <Select
+                    value={form.brand_id || undefined}
+                    onValueChange={(v) => updateField("brand_id", v)}
+                  >
+                    <SelectTrigger className="mt-1 h-9">
+                      <SelectValue placeholder="Selecione" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {brands.map((b) => (
+                        <SelectItem key={b.id} value={b.id}>
+                          {b.name}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div>
+                  <Label className="text-xs">Categoria</Label>
+                  <Select
+                    value={form.category_id || undefined}
+                    onValueChange={(v) => updateField("category_id", v)}
+                  >
+                    <SelectTrigger className="mt-1 h-9">
+                      <SelectValue placeholder="Selecione" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {categories.map((c) => (
+                        <SelectItem key={c.id} value={c.id}>
+                          {c.name}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div>
+                  <Label className="text-xs">Subcategoria</Label>
+                  <Select
+                    value={form.subcategory_id || undefined}
+                    onValueChange={(v) => updateField("subcategory_id", v)}
+                  >
+                    <SelectTrigger className="mt-1 h-9">
+                      <SelectValue placeholder="Selecione" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {subcategories.map((c) => (
+                        <SelectItem key={c.id} value={c.id}>
+                          {c.name}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+              </div>
+
+              <div className="flex flex-wrap gap-x-4 gap-y-2 pt-1 border-t">
+                {highlightFields.map(({ key, label }) => (
+                  <label key={key} className="flex items-center gap-1.5 text-xs">
+                    <input
+                      type="checkbox"
+                      checked={form[key] as boolean}
+                      onChange={(e) => updateField(key, e.target.checked)}
+                      className="rounded"
+                    />
+                    {label}
+                  </label>
+                ))}
+              </div>
+
               {isNewProduct && (
                 <p className="text-[11px] text-muted-foreground">
-                  O código interno é gerado automaticamente (6 dígitos) ao salvar.
+                  Código interno gerado automaticamente (6 dígitos) ao salvar.
                 </p>
               )}
-              <div className="flex gap-3 pt-2 xl:hidden">
-                <Button type="submit" disabled={loading} className="flex-1">
+
+              <div className="flex gap-2 pt-1 xl:hidden">
+                <Button type="submit" disabled={loading} size="sm" className="flex-1">
                   {loading ? (
                     <Loader2 className="h-4 w-4 animate-spin" />
                   ) : (
@@ -443,7 +547,7 @@ export function ProductForm({
                   )}
                   {product ? "Salvar" : "Criar"}
                 </Button>
-                <Button type="button" variant="outline" onClick={() => router.back()}>
+                <Button type="button" variant="outline" size="sm" onClick={() => router.back()}>
                   Cancelar
                 </Button>
               </div>
@@ -451,70 +555,65 @@ export function ProductForm({
           </Card>
 
           <Card>
-            <CardHeader className="flex flex-row items-center justify-between gap-3">
-              <div>
-                <CardTitle>Imagens</CardTitle>
-                <p className="text-sm text-muted-foreground mt-1">
-                  A primeira imagem será a principal do catálogo.
-                </p>
-              </div>
+            <CardHeader className="flex flex-row items-center justify-between gap-2 py-3">
+              <CardTitle className="text-base">Imagens</CardTitle>
               <Button type="button" variant="outline" size="sm" onClick={addImageField}>
                 <ImagePlus className="h-4 w-4" />
                 Adicionar
               </Button>
             </CardHeader>
-            <CardContent className="space-y-4">
+            <CardContent className="space-y-2 pt-0">
               {imageFields.map((image, index) => (
                 <div
                   key={index}
-                  className="grid grid-cols-1 md:grid-cols-[auto_1fr_1fr_auto] gap-3 items-end p-4 rounded-lg border bg-muted/20"
+                  className="grid grid-cols-1 md:grid-cols-[auto_1fr_1fr_auto] gap-2 items-end p-2 rounded-md border bg-muted/20"
                 >
-                  <div className="flex md:flex-col gap-1 items-center md:items-stretch pb-1 md:pb-0">
-                    <span className="text-xs font-bold text-muted-foreground md:text-center md:mb-1">
+                  <div className="flex md:flex-col gap-1 items-center md:items-stretch">
+                    <span className="text-[10px] font-bold text-muted-foreground md:text-center">
                       #{index + 1}
                     </span>
                     <Button
                       type="button"
                       variant="outline"
                       size="icon"
-                      className="h-8 w-8"
+                      className="h-7 w-7"
                       onClick={() => moveImageField(index, "up")}
                       disabled={index === 0}
                       title="Mover para cima"
                     >
-                      <ArrowUp className="h-4 w-4" />
+                      <ArrowUp className="h-3 w-3" />
                     </Button>
                     <Button
                       type="button"
                       variant="outline"
                       size="icon"
-                      className="h-8 w-8"
+                      className="h-7 w-7"
                       onClick={() => moveImageField(index, "down")}
                       disabled={index === imageFields.length - 1}
                       title="Mover para baixo"
                     >
-                      <ArrowDown className="h-4 w-4" />
+                      <ArrowDown className="h-3 w-3" />
                     </Button>
                   </div>
                   <div>
-                    <Label>
+                    <Label className="text-xs">
                       URL {index === 0 && <span className="text-primary">(principal)</span>}
                     </Label>
                     <Input
                       type="url"
                       value={image.url}
                       onChange={(e) => updateImageField(index, "url", e.target.value)}
-                      placeholder="https://exemplo.com/imagem.jpg"
-                      className="mt-1"
+                      placeholder="https://..."
+                      className="mt-1 h-9"
                     />
                   </div>
                   <div>
-                    <Label>Alt (opcional)</Label>
+                    <Label className="text-xs">Alt (opcional)</Label>
                     <Input
                       value={image.alt_text}
                       onChange={(e) => updateImageField(index, "alt_text", e.target.value)}
                       placeholder={form.name || "Descrição"}
-                      className="mt-1"
+                      className="mt-1 h-9"
                     />
                   </div>
                   <Button
@@ -522,14 +621,14 @@ export function ProductForm({
                     variant="ghost"
                     size="icon"
                     onClick={() => removeImageField(index)}
-                    className="text-muted-foreground hover:text-destructive"
+                    className="h-9 w-9 text-muted-foreground hover:text-destructive"
                     title="Remover imagem"
                   >
                     <Trash2 className="h-4 w-4" />
                   </Button>
                   {image.url && (
-                    <div className="md:col-span-4 flex items-center gap-3">
-                      <div className="h-16 w-16 rounded-md border bg-white p-1 flex items-center justify-center shrink-0">
+                    <div className="md:col-span-4 flex items-center gap-2">
+                      <div className="h-12 w-12 rounded border bg-white p-0.5 flex items-center justify-center shrink-0">
                         {/* eslint-disable-next-line @next/next/no-img-element */}
                         <img
                           src={image.url}
@@ -560,18 +659,18 @@ export function ProductForm({
             }
           />
 
-          <div className="grid lg:grid-cols-2 gap-6">
-            <Card>
-              <CardHeader>
-                <CardTitle>Descrições</CardTitle>
-              </CardHeader>
-              <CardContent className="space-y-4">
+          <Accordion type="multiple" defaultValue={product ? ["content", "ml"] : []} className="rounded-xl border px-4">
+            <AccordionItem value="content" className="border-b-0">
+              <AccordionTrigger className="py-3 text-base hover:no-underline">
+                Descrições e conteúdo
+              </AccordionTrigger>
+              <AccordionContent className="space-y-3 pb-4">
                 <FormattedDescriptionField
                   id="short_description"
                   label="Descrição curta"
                   value={form.short_description}
                   onChange={(value) => updateField("short_description", value)}
-                  minHeightClass="min-h-[72px]"
+                  minHeightClass="min-h-[64px]"
                   placeholder="Resumo do produto..."
                 />
                 <FormattedDescriptionField
@@ -579,75 +678,79 @@ export function ProductForm({
                   label="Descrição completa"
                   value={form.full_description}
                   onChange={(value) => updateField("full_description", value)}
-                  minHeightClass="min-h-[160px]"
-                  placeholder="Descrição detalhada do produto..."
+                  minHeightClass="min-h-[120px]"
+                  placeholder="Descrição detalhada..."
                 />
-                <div>
-                  <Label>Aplicações</Label>
-                  <textarea
-                    value={form.applications}
-                    onChange={(e) => updateField("applications", e.target.value)}
-                    className="mt-1 flex w-full rounded-md border border-input bg-background px-3 py-2 text-sm min-h-[72px]"
-                  />
-                </div>
-                <div>
-                  <Label>Compatibilidades (texto livre)</Label>
-                  <textarea
-                    value={form.compatibilities}
-                    onChange={(e) => updateField("compatibilities", e.target.value)}
-                    className="mt-1 flex w-full rounded-md border border-input bg-background px-3 py-2 text-sm min-h-[72px]"
-                  />
-                </div>
-                <div>
-                  <Label>Referências</Label>
-                  <textarea
-                    value={form.product_references}
-                    onChange={(e) => updateField("product_references", e.target.value)}
-                    className="mt-1 flex w-full rounded-md border border-input bg-background px-3 py-2 text-sm min-h-[72px]"
-                  />
-                </div>
-              </CardContent>
-            </Card>
-
-            <Card>
-              <CardHeader>
-                <CardTitle>Mercado Livre</CardTitle>
-              </CardHeader>
-              <CardContent className="space-y-4">
-                <div>
-                  <Label>URL de origem (sync de preço)</Label>
-                  <Input
-                    value={form.ml_source_url}
-                    onChange={(e) => updateField("ml_source_url", e.target.value)}
-                    placeholder="https://produto.mercadolivre.com.br/MLB-..."
-                    className="mt-1"
-                  />
-                </div>
-                <div>
-                  <Label>URL do anúncio (afiliado)</Label>
-                  <Input
-                    value={form.mercado_livre_url}
-                    onChange={(e) => updateField("mercado_livre_url", e.target.value)}
-                    placeholder="https://meli.la/..."
-                    className="mt-1"
-                  />
-                </div>
-                <div className="grid grid-cols-2 gap-4">
+                <div className="grid sm:grid-cols-2 gap-3">
                   <div>
-                    <Label>ID do anúncio</Label>
-                    <Input
-                      value={form.mercado_livre_id}
-                      onChange={(e) => updateField("mercado_livre_id", e.target.value)}
-                      className="mt-1"
+                    <Label className="text-xs">Aplicações</Label>
+                    <textarea
+                      value={form.applications}
+                      onChange={(e) => updateField("applications", e.target.value)}
+                      className="mt-1 flex w-full rounded-md border border-input bg-background px-3 py-2 text-sm min-h-[64px]"
                     />
                   </div>
                   <div>
-                    <Label>Status do anúncio</Label>
+                    <Label className="text-xs">Compatibilidades (texto livre)</Label>
+                    <textarea
+                      value={form.compatibilities}
+                      onChange={(e) => updateField("compatibilities", e.target.value)}
+                      className="mt-1 flex w-full rounded-md border border-input bg-background px-3 py-2 text-sm min-h-[64px]"
+                    />
+                  </div>
+                </div>
+                <div>
+                  <Label className="text-xs">Referências</Label>
+                  <textarea
+                    value={form.product_references}
+                    onChange={(e) => updateField("product_references", e.target.value)}
+                    className="mt-1 flex w-full rounded-md border border-input bg-background px-3 py-2 text-sm min-h-[64px]"
+                  />
+                </div>
+              </AccordionContent>
+            </AccordionItem>
+
+            <AccordionItem value="ml" className="border-b-0">
+              <AccordionTrigger className="py-3 text-base hover:no-underline">
+                Mercado Livre, sync e SEO
+              </AccordionTrigger>
+              <AccordionContent className="space-y-3 pb-4">
+                <div className="grid sm:grid-cols-2 gap-3">
+                  <div>
+                    <Label className="text-xs">URL de origem (sync de preço)</Label>
+                    <Input
+                      value={form.ml_source_url}
+                      onChange={(e) => updateField("ml_source_url", e.target.value)}
+                      placeholder="https://produto.mercadolivre.com.br/MLB-..."
+                      className="mt-1 h-9"
+                    />
+                  </div>
+                  <div>
+                    <Label className="text-xs">URL do anúncio (afiliado)</Label>
+                    <Input
+                      value={form.mercado_livre_url}
+                      onChange={(e) => updateField("mercado_livre_url", e.target.value)}
+                      placeholder="https://meli.la/..."
+                      className="mt-1 h-9"
+                    />
+                  </div>
+                </div>
+                <div className="grid sm:grid-cols-2 gap-3">
+                  <div>
+                    <Label className="text-xs">ID do anúncio</Label>
+                    <Input
+                      value={form.mercado_livre_id}
+                      onChange={(e) => updateField("mercado_livre_id", e.target.value)}
+                      className="mt-1 h-9"
+                    />
+                  </div>
+                  <div>
+                    <Label className="text-xs">Status do anúncio</Label>
                     <Select
                       value={form.listing_status}
                       onValueChange={(v) => updateField("listing_status", v)}
                     >
-                      <SelectTrigger className="mt-1">
+                      <SelectTrigger className="mt-1 h-9">
                         <SelectValue />
                       </SelectTrigger>
                       <SelectContent>
@@ -659,7 +762,7 @@ export function ProductForm({
                     </Select>
                   </div>
                 </div>
-                <label className="flex items-center gap-2 text-sm">
+                <label className="flex items-center gap-2 text-xs">
                   <input
                     id="price_sync_enabled"
                     type="checkbox"
@@ -675,128 +778,34 @@ export function ProductForm({
                     onSynced={() => router.refresh()}
                   />
                 )}
-              </CardContent>
-            </Card>
-          </div>
+                <div className="grid sm:grid-cols-2 gap-3 pt-2 border-t">
+                  <div>
+                    <Label className="text-xs">Tags</Label>
+                    <Input
+                      value={form.tags}
+                      onChange={(e) => updateField("tags", e.target.value)}
+                      placeholder="Separadas por vírgula"
+                      className="mt-1 h-9"
+                    />
+                  </div>
+                  <div>
+                    <Label className="text-xs">Palavras-chave SEO</Label>
+                    <Input
+                      value={form.seo_keywords}
+                      onChange={(e) => updateField("seo_keywords", e.target.value)}
+                      placeholder="Separadas por vírgula"
+                      className="mt-1 h-9"
+                    />
+                  </div>
+                </div>
+              </AccordionContent>
+            </AccordionItem>
+          </Accordion>
         </div>
 
-        <aside className="space-y-6 xl:sticky xl:top-4">
-          <Card>
-            <CardHeader>
-              <CardTitle>Classificação</CardTitle>
-            </CardHeader>
-            <CardContent className="space-y-4">
-              <div>
-                <Label>Marca do produto</Label>
-                <Select
-                  value={form.brand_id || undefined}
-                  onValueChange={(v) => updateField("brand_id", v)}
-                >
-                  <SelectTrigger className="mt-1">
-                    <SelectValue placeholder="Selecione" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {brands.map((b) => (
-                      <SelectItem key={b.id} value={b.id}>
-                        {b.name}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
-              <div>
-                <Label>Categoria</Label>
-                <Select
-                  value={form.category_id || undefined}
-                  onValueChange={(v) => updateField("category_id", v)}
-                >
-                  <SelectTrigger className="mt-1">
-                    <SelectValue placeholder="Selecione" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {categories.map((c) => (
-                      <SelectItem key={c.id} value={c.id}>
-                        {c.name}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
-              <div>
-                <Label>Subcategoria</Label>
-                <Select
-                  value={form.subcategory_id || undefined}
-                  onValueChange={(v) => updateField("subcategory_id", v)}
-                >
-                  <SelectTrigger className="mt-1">
-                    <SelectValue placeholder="Selecione" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {subcategories.map((c) => (
-                      <SelectItem key={c.id} value={c.id}>
-                        {c.name}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
-            </CardContent>
-          </Card>
-
-          <Card>
-            <CardHeader>
-              <CardTitle>Destaques</CardTitle>
-            </CardHeader>
-            <CardContent className="grid grid-cols-2 gap-3">
-              {[
-                { key: "is_featured", label: "Destaque" },
-                { key: "is_bestseller", label: "Mais vendido" },
-                { key: "is_new", label: "Novo" },
-                { key: "is_promotion", label: "Promoção" },
-                { key: "is_launch", label: "Lançamento" },
-                { key: "is_recommended", label: "Recomendado" },
-              ].map(({ key, label }) => (
-                <label key={key} className="flex items-center gap-2 text-sm">
-                  <input
-                    type="checkbox"
-                    checked={form[key as keyof typeof form] as boolean}
-                    onChange={(e) => updateField(key, e.target.checked)}
-                    className="rounded"
-                  />
-                  {label}
-                </label>
-              ))}
-            </CardContent>
-          </Card>
-
-          <Card>
-            <CardHeader>
-              <CardTitle>SEO e tags</CardTitle>
-            </CardHeader>
-            <CardContent className="space-y-4">
-              <div>
-                <Label>Tags</Label>
-                <Input
-                  value={form.tags}
-                  onChange={(e) => updateField("tags", e.target.value)}
-                  placeholder="Separadas por vírgula"
-                  className="mt-1"
-                />
-              </div>
-              <div>
-                <Label>Palavras-chave SEO</Label>
-                <Input
-                  value={form.seo_keywords}
-                  onChange={(e) => updateField("seo_keywords", e.target.value)}
-                  placeholder="Separadas por vírgula"
-                  className="mt-1"
-                />
-              </div>
-            </CardContent>
-          </Card>
-
-          <div className="flex flex-col gap-3">
-            <Button type="submit" disabled={loading} size="lg" className="w-full">
+        <aside className="xl:sticky xl:top-4 space-y-3">
+          <div className="flex flex-col gap-2 rounded-xl border p-3 bg-card">
+            <Button type="submit" disabled={loading} className="w-full">
               {loading ? (
                 <Loader2 className="h-4 w-4 animate-spin" />
               ) : (

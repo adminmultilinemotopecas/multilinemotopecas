@@ -18,10 +18,12 @@ import {
 import { DataTable } from "@/components/admin/data-table";
 import {
   ProductPriceSyncButton,
+  PriceSyncHistoryPanel,
   SyncAllPricesPanel,
 } from "@/components/admin/price-sync-controls";
 import { ProductInlinePriceEditor } from "@/components/admin/product-inline-price-editor";
 import { PriceSyncStatusDisplay } from "@/components/admin/price-sync-status";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { adminFetch } from "@/lib/admin/client";
 import type { Product, ProductStatus, ListingStatus } from "@/types/database";
 
@@ -41,6 +43,8 @@ export default function AdminProductsPage() {
   const [listingFilter, setListingFilter] = useState<ListingStatus | "all">("all");
   const [mlPendingOnly, setMlPendingOnly] = useState(false);
   const [page, setPage] = useState(1);
+  const [activeTab, setActiveTab] = useState("products");
+  const [historyRefreshKey, setHistoryRefreshKey] = useState(0);
 
   useEffect(() => {
     loadProducts();
@@ -135,20 +139,44 @@ export default function AdminProductsPage() {
         <div>
           <h1 className="text-3xl font-bold">Produtos</h1>
           <p className="text-sm text-muted-foreground mt-1">
-            {filteredProducts.length} de {products.length} produto(s)
+            {activeTab === "products"
+              ? `${filteredProducts.length} de ${products.length} produto(s)`
+              : "Histórico de alterações de preço"}
           </p>
         </div>
-        <Button asChild>
-          <Link href="/admin/produtos/novo">
-            <Plus className="h-4 w-4" />
-            Novo Produto
-          </Link>
-        </Button>
+        {activeTab === "products" && (
+          <Button asChild>
+            <Link href="/admin/produtos/novo">
+              <Plus className="h-4 w-4" />
+              Novo Produto
+            </Link>
+          </Button>
+        )}
       </div>
 
-      <SyncAllPricesPanel onComplete={loadProducts} />
+      <Tabs
+        value={activeTab}
+        onValueChange={(value) => {
+          setActiveTab(value);
+          if (value === "history") {
+            setHistoryRefreshKey((key) => key + 1);
+          }
+        }}
+      >
+        <TabsList>
+          <TabsTrigger value="products">Lista de produtos</TabsTrigger>
+          <TabsTrigger value="history">Histórico de preços</TabsTrigger>
+        </TabsList>
 
-      <div className="rounded-xl border bg-muted/20 p-4 space-y-4">
+        <TabsContent value="products" className="space-y-6">
+          <SyncAllPricesPanel
+            onComplete={() => {
+              loadProducts();
+              setHistoryRefreshKey((key) => key + 1);
+            }}
+          />
+
+          <div className="rounded-xl border bg-muted/20 p-4 space-y-4">
         <div className="flex flex-wrap items-end justify-between gap-4">
           <div className="space-y-1 flex-1 min-w-[240px] max-w-xl">
             <Label htmlFor="product-search">Pesquisar</Label>
@@ -363,6 +391,12 @@ export default function AdminProductsPage() {
         }}
         onDelete={handleDelete}
       />
+        </TabsContent>
+
+        <TabsContent value="history">
+          <PriceSyncHistoryPanel refreshKey={historyRefreshKey} />
+        </TabsContent>
+      </Tabs>
     </div>
   );
 }

@@ -8,6 +8,7 @@ import {
 import { getMlBrowserSession } from "@/lib/ml-price-sync/ml-browser-session";
 import { slugify } from "@/lib/utils";
 import { normalizeProductDescription } from "@/lib/product-description";
+import { logManualPriceChange } from "@/lib/db/price-sync-history";
 import type { ProductStatus, ListingStatus } from "@/types/database";
 
 export interface ProductImageInput {
@@ -162,6 +163,8 @@ export async function saveProduct(
           ml_source_url: true,
           mercado_livre_id: true,
           ml_verification_pending: true,
+          price: true,
+          promotional_price: true,
         },
       })
     : null;
@@ -256,6 +259,19 @@ export async function saveProduct(
       include: productInclude,
     });
 
+    if (productId && existing && saved) {
+      await logManualPriceChange({
+        productId: product.id,
+        oldPrice: Number(existing.price),
+        newPrice: Number(saved.price),
+        oldPromotionalPrice:
+          existing.promotional_price != null ? Number(existing.promotional_price) : null,
+        newPromotionalPrice:
+          saved.promotional_price != null ? Number(saved.promotional_price) : null,
+        triggerSource: "form_edit",
+      });
+    }
+
     return { product: saved ? mapProduct(saved) : null };
   } catch (error) {
     if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === "P2002") {
@@ -302,6 +318,15 @@ export async function updateProductPrices(
     }
   }
 
+  const existing = await prisma.products.findUnique({
+    where: { id },
+    select: { price: true, promotional_price: true },
+  });
+
+  if (!existing) {
+    throw new Error("Produto não encontrado.");
+  }
+
   const updated = await prisma.products.update({
     where: { id },
     data: {
@@ -310,6 +335,16 @@ export async function updateProductPrices(
       is_promotion: promotionalPrice != null,
     },
     include: productInclude,
+  });
+
+  await logManualPriceChange({
+    productId: id,
+    oldPrice: Number(existing.price),
+    newPrice: price,
+    oldPromotionalPrice:
+      existing.promotional_price != null ? Number(existing.promotional_price) : null,
+    newPromotionalPrice: promotionalPrice,
+    triggerSource: "manual_admin",
   });
 
   return mapProduct(updated);

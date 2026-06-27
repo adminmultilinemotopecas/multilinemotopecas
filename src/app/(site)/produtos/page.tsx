@@ -9,12 +9,8 @@ import { getProducts } from "@/lib/queries/products";
 import { getBrands, getCategories, getMotorcycleModels } from "@/lib/queries/catalog";
 import type { ProductFilters, ProductSort } from "@/types/database";
 import type { Metadata } from "next";
-
-export const metadata: Metadata = {
-  title: "Catálogo de Motopeças",
-  description:
-    "Explore nosso catálogo completo de peças para motocicletas. Filtre por marca, categoria, modelo e compre no Mercado Livre.",
-};
+import { SITE_CONFIG } from "@/lib/constants";
+import { hasCatalogFilters, robotsNoIndexFollow } from "@/lib/seo";
 
 interface PageProps {
   searchParams: Promise<{
@@ -30,6 +26,24 @@ interface PageProps {
     featured?: string;
     q?: string;
   }>;
+}
+
+export async function generateMetadata({ searchParams }: PageProps): Promise<Metadata> {
+  const params = await searchParams;
+  const filtered = hasCatalogFilters(params);
+
+  return {
+    title: "Catálogo de Motopeças",
+    description:
+      "Explore nosso catálogo completo de peças para motocicletas. Filtre por marca, categoria, modelo e compre no Mercado Livre.",
+    ...(filtered
+      ? { robots: robotsNoIndexFollow }
+      : {
+          alternates: {
+            canonical: `${SITE_CONFIG.url}/produtos`,
+          },
+        }),
+  };
 }
 
 export const revalidate = 1800;

@@ -4,6 +4,7 @@ import { SearchBar } from "@/components/search/search-bar";
 import { Pagination } from "@/components/catalog/pagination";
 import { searchProducts } from "@/lib/queries/products";
 import { PRODUCTS_PER_PAGE } from "@/lib/constants";
+import { robotsNoIndexFollow } from "@/lib/seo";
 import type { Metadata } from "next";
 
 interface PageProps {
@@ -18,7 +19,7 @@ export async function generateMetadata({ searchParams }: PageProps): Promise<Met
     description: query
       ? `Resultados da busca por "${query}" em nosso catálogo de motopeças.`
       : "Busque peças por modelo, marca, SKU ou código.",
-    robots: query ? { index: false, follow: true } : { index: true, follow: true },
+    robots: robotsNoIndexFollow,
   };
 }
 
